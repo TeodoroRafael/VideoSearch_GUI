@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VideoSearch GUI</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <h1>VideoSearch <span>GUI</span></h1>
+    <label class="file-btn">
+      Open video
+      <input type="file" id="videoFileInput" accept="video/*" hidden>
+    </label>
+  </header>
+
+  <main class="main">
+
+    <section class="player-section">
+
+      <div class="video-wrapper" id="videoWrapper">
+        <video id="videoPlayer" class="video-player"></video>
+        <div id="emptyState" class="empty-state">
+          No video loaded<br>
+          <span>Click "Open video" to get started</span>
+        </div>
+      </div>
+
+      <div class="controls-bar">
+        <button id="playBtn" class="ctrl-btn primary" title="Play / Pause" disabled>▶</button>
+        <button id="stopBtn" class="ctrl-btn" title="Stop" disabled>■</button>
+
+        <span class="time-display">
+          <span id="currentTime">00:00</span> / <span id="duration">00:00</span>
+        </span>
+
+        <button id="addPinBtn" class="ctrl-btn pin-btn" title="Add marker at the current time" disabled>
+          📌 Mark
+        </button>
+
+        <button id="fullscreenBtn" class="ctrl-btn" title="Fullscreen" disabled>⛶</button>
+      </div>
+
+      <div class="timeline-wrapper">
+        <div id="timelineTrack" class="timeline-track">
+          <div id="timelineProgress" class="timeline-progress"></div>
+          <div id="timelineHover" class="timeline-hover" hidden></div>
+          <div id="pinsLayer" class="pins-layer"></div>
+        </div>
+        <div id="hoverTimeTooltip" class="hover-time-tooltip" hidden></div>
+      </div>
+
+      <p class="hint">Hover over the track to preview the frame in the player. Click to seek. Right-click a marker to remove it. Shortcuts: Space = play/pause, A = add pin.</p>
+
+    </section>
+
+    <section class="search-section">
+      <div class="search-header">
+        <h2>Search in video</h2>
+        <form id="searchForm" class="search-form">
+          <input type="text" id="searchInput" placeholder="Search by marker, keyword..." autocomplete="off">
+          <button type="submit" id="searchBtn">🔍 Search</button>
+        </form>
+      </div>
+
+      <div id="searchResults" class="search-results">
+        <p class="results-placeholder">
+          Search results will appear here as frames linked to the video's markers.
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- hidden helper elements used to capture pin thumbnails without interrupting playback -->
+<video id="captureVideo" preload="auto" muted playsinline style="display:none"></video>
+<canvas id="captureCanvas" style="display:none"></canvas>
+
+<script src="app.js"></script>
+</body>
+</html>
