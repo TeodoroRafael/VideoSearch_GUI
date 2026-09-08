@@ -1,0 +1,108 @@
+<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <clipPath id="videoClip">
+      <rect x="20" y="70" width="1160" height="270" rx="10" />
+    </clipPath>
+  </defs>
+
+  <!-- page background -->
+  <rect x="0" y="0" width="1200" height="800" fill="#14161c" />
+
+  <!-- topbar -->
+  <rect x="0" y="0" width="1200" height="50" fill="#1b1e27" />
+  <line x1="0" y1="50" x2="1200" y2="50" stroke="#2c303a" stroke-width="1" />
+  <text x="20" y="31" fill="#e7e9ee" font-size="17" font-weight="700">VideoSearch <tspan fill="#4f8cff">GUI</tspan></text>
+  <rect x="1075" y="12" width="105" height="26" rx="8" fill="#4f8cff" />
+  <text x="1127" y="29" fill="#ffffff" font-size="12" text-anchor="middle">Open video</text>
+
+  <!-- video player -->
+  <rect x="20" y="70" width="1160" height="270" rx="10" fill="#000000" />
+  <g clip-path="url(#videoClip)" opacity="0.55">
+    <circle cx="250" cy="205" r="70" fill="#222833" />
+    <polygon points="700,140 900,140 800,260" fill="#232a36" />
+    <rect x="950" y="170" width="150" height="70" fill="#1c222c" />
+  </g>
+  <text x="600" y="200" fill="#9aa0ac" font-size="14" text-anchor="middle">No video loaded</text>
+  <text x="600" y="220" fill="#6b7280" font-size="11" text-anchor="middle">Click "Open video" to get started</text>
+
+  <!-- controls bar -->
+  <rect x="20" y="358" width="38" height="38" rx="8" fill="#4f8cff" />
+  <polygon points="33,368 33,386 50,377" fill="#ffffff" />
+
+  <rect x="66" y="358" width="38" height="38" rx="8" fill="#22262f" stroke="#2c303a" />
+  <rect x="78" y="370" width="14" height="14" fill="#e7e9ee" />
+
+  <text x="118" y="381" fill="#9aa0ac" font-size="13" font-family="Menlo, monospace">01:12 / 05:30</text>
+
+  <rect x="990" y="358" width="98" height="38" rx="8" fill="#22262f" stroke="#2c303a" />
+  <text x="1039" y="381" fill="#e7e9ee" font-size="12" text-anchor="middle">📌 Mark</text>
+
+  <rect x="1100" y="358" width="80" height="38" rx="8" fill="#22262f" stroke="#2c303a" />
+  <text x="1140" y="382" fill="#e7e9ee" font-size="16" text-anchor="middle">⛶</text>
+
+  <!-- timeline track -->
+  <rect x="20" y="412" width="1160" height="40" rx="8" fill="#22262f" stroke="#2c303a" />
+  <rect x="20" y="412" width="440" height="40" rx="8" fill="#35507f" />
+  <line x1="460" y1="412" x2="460" y2="452" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2" />
+
+  <!-- pins on the timeline -->
+  <polygon points="190,452 184,440 196,440" fill="#ff9f43" />
+  <polygon points="520,452 514,440 526,440" fill="#ff9f43" />
+  <polygon points="860,452 854,440 866,440" fill="#ff9f43" />
+
+  <text x="20" y="478" fill="#9aa0ac" font-size="11">Hover over the track to preview the frame in the player. Click to seek. Shortcuts: Space = play/pause, A = add pin.</text>
+
+  <!-- search section -->
+  <line x1="0" y1="502" x2="1200" y2="502" stroke="#2c303a" stroke-width="1" />
+  <rect x="0" y="502" width="1200" height="298" fill="#1b1e27" />
+
+  <text x="20" y="540" fill="#e7e9ee" font-size="14" font-weight="700">Search in video</text>
+  <rect x="160" y="522" width="360" height="32" rx="8" fill="#22262f" stroke="#2c303a" />
+  <text x="174" y="543" fill="#6b7280" font-size="12">Search by marker, keyword...</text>
+  <rect x="530" y="522" width="90" height="32" rx="8" fill="#4f8cff" />
+  <text x="575" y="543" fill="#ffffff" font-size="12" text-anchor="middle">🔍 Search</text>
+
+  <!-- result cards -->
+  <g>
+    <rect x="20" y="576" width="170" height="130" rx="8" fill="#22262f" stroke="#2c303a" />
+    <rect x="20" y="576" width="170" height="96" rx="8" fill="#0c0e12" />
+    <circle cx="105" cy="624" r="22" fill="#2a3140" />
+    <text x="30" y="694" fill="#e7e9ee" font-size="11">Marker 1</text>
+    <text x="30" y="710" fill="#9aa0ac" font-size="10" font-family="Menlo, monospace">00:12</text>
+  </g>
+  <g>
+    <rect x="200" y="576" width="170" height="130" rx="8" fill="#22262f" stroke="#2c303a" />
+    <rect x="200" y="576" width="170" height="96" rx="8" fill="#0c0e12" />
+    <polygon points="245,650 285,600 330,650" fill="#2a3140" />
+    <text x="210" y="694" fill="#e7e9ee" font-size="11">Marker 2</text>
+    <text x="210" y="710" fill="#9aa0ac" font-size="10" font-family="Menlo, monospace">01:47</text>
+  </g>
+  <g>
+    <rect x="380" y="576" width="170" height="130" rx="8" fill="#22262f" stroke="#2c303a" />
+    <rect x="380" y="576" width="170" height="96" rx="8" fill="#0c0e12" />
+    <rect x="420" y="600" width="90" height="50" fill="#2a3140" />
+    <text x="390" y="694" fill="#e7e9ee" font-size="11">Marker 3</text>
+    <text x="390" y="710" fill="#9aa0ac" font-size="10" font-family="Menlo, monospace">03:05</text>
+  </g>
+  <g opacity="0.55">
+    <rect x="560" y="576" width="170" height="130" rx="8" fill="#22262f" stroke="#2c303a" />
+    <rect x="560" y="576" width="170" height="96" rx="8" fill="#0c0e12" />
+    <text x="570" y="694" fill="#e7e9ee" font-size="11">Marker 4</text>
+    <text x="570" y="710" fill="#9aa0ac" font-size="10" font-family="Menlo, monospace">04:41</text>
+  </g>
+
+  <!-- callout badges -->
+  <g font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">
+    <circle cx="1075" cy="12" r="13" fill="#ff9f43" /><text x="1075" y="17">1</text>
+    <circle cx="30" cy="80" r="13" fill="#ff9f43" /><text x="30" y="85">2</text>
+    <circle cx="30" cy="368" r="13" fill="#ff9f43" /><text x="30" y="373">3</text>
+    <circle cx="76" cy="368" r="13" fill="#ff9f43" /><text x="76" y="373">4</text>
+    <circle cx="118" cy="345" r="13" fill="#ff9f43" /><text x="118" y="350">5</text>
+    <circle cx="1000" cy="368" r="13" fill="#ff9f43" /><text x="1000" y="373">6</text>
+    <circle cx="1110" cy="368" r="13" fill="#ff9f43" /><text x="1110" y="373">7</text>
+    <circle cx="30" cy="422" r="13" fill="#ff9f43" /><text x="30" y="427">8</text>
+    <circle cx="190" cy="434" r="13" fill="#ff9f43" /><text x="190" y="439">9</text>
+    <circle cx="170" cy="532" r="13" fill="#ff9f43" /><text x="170" y="537">10</text>
+    <circle cx="30" cy="586" r="13" fill="#ff9f43" /><text x="30" y="591">11</text>
+  </g>
+</svg>
