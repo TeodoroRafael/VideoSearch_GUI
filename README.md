@@ -17,7 +17,7 @@ VisualReF-based search backend.
 
 | # | Element | What it does |
 |---|---|---|
-| 1 | **Open video** | Picks a local video file. It's uploaded to the Python backend, which stores a reference copy under `database/<video name>/` (or reuses it if that video was opened before) — see [ARCHITECTURE.md](ARCHITECTURE.md). |
+| 1 | **Load video** | Picks a local video file. It's uploaded to the Python backend, which stores a reference copy under `database/<video name>/` (or reuses it if that video was opened before) — see [ARCHITECTURE.md](ARCHITECTURE.md). |
 | 2 | **Player** | Shows the loaded video. Fills the top half of the window (`object-fit: contain`, so the aspect ratio is preserved). |
 | 3 | **Play / Pause** | Toggles playback. Also bound to the `Space` key. |
 | 4 | **Stop** | Pauses and resets playback to `00:00`. |
@@ -28,15 +28,23 @@ VisualReF-based search backend.
 | 9 | **Pins (markers)** | One per marked moment. Click to jump to it, double-click to rename, right-click to remove. Each pin is what search results link back to. |
 | 10 | **Search box** | Query field + search button. Search results come back as frames, each linked to a pin. |
 | 11 | **Search results** | The frames matching the query, laid out as a horizontally scrolling strip below the player. Clicking a result seeks the player to that frame's pin. |
+| 12 | **Create FAISS** | Builds a searchable FAISS dataset for the loaded video — extracting shot-boundary frames and encoding them with CLIP — and reuses whatever's already built rather than redoing it. See [ARCHITECTURE.md](ARCHITECTURE.md) for the exact steps it follows and where each file ends up. |
 
 ## Getting started
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 python3 server.py
 ```
 
-Then open `http://localhost:8000`. No dependencies to install — the
-backend only uses the Python standard library.
+Then open `http://localhost:8000`. The backend needs the packages in
+[requirements.txt](requirements.txt) (torch, transformers, faiss-cpu,
+opencv-python-headless, ...) — the Create FAISS button uses them to extract
+frames and build a CLIP-based FAISS index per video. The first time it
+runs, it downloads the CLIP model from Hugging Face unless already cached
+locally.
 
 ## Architecture
 
