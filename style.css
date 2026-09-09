@@ -52,19 +52,36 @@ html, body{
   color: var(--accent);
 }
 
+.topbar-actions{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .file-btn{
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
   background: var(--accent);
   color: white;
-  padding: 8px 14px;
+  border: none;
+  font-family: inherit;
+  padding: 0 14px;
   border-radius: var(--radius);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background .15s ease;
+  transition: background .15s ease, opacity .15s ease;
 }
 
-.file-btn:hover{
+.file-btn:hover:not(:disabled){
   background: #3d78e6;
+}
+
+.file-btn:disabled{
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ---------- main layout ---------- */
@@ -129,6 +146,39 @@ html, body{
 .empty-state span{
   font-size: 12px;
   opacity: 0.7;
+}
+
+.toast{
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toast.processing::before{
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-dim);
+  border-top-color: var(--accent);
+  animation: toast-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes toast-spin{
+  to{ transform: rotate(360deg); }
 }
 
 /* ---------- controls ---------- */

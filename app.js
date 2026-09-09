@@ -17,6 +17,7 @@
   const videoInput    = document.getElementById('videoFileInput');
   const videoWrapper    = document.getElementById('videoWrapper');
   const emptyState     = document.getElementById('emptyState');
+  const createFaissBtn  = document.getElementById('createFaissBtn');
 
   const playBtn        = document.getElementById('playBtn');
   const stopBtn         = document.getElementById('stopBtn');
@@ -42,6 +43,7 @@
   let pinIdCounter = 1;
   let committedTime = 0;  // actual playhead position (outside of hover-preview)
   let isHovering = false;
+  let currentVideoName = null; // database/<currentVideoName>/ for the loaded video
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -57,6 +59,7 @@
     stopBtn.disabled = !enabled;
     addPinBtn.disabled = !enabled;
     fullscreenBtn.disabled = !enabled;
+    createFaissBtn.disabled = !enabled;
   }
 
   // ---------------------------------------------------------------------
@@ -85,6 +88,7 @@
     // server.py — this is the on-disk copy future processing should use.
     video.src = reference.path;
     captureVideo.src = reference.path;
+    currentVideoName = reference.name;
 
     emptyState.hidden = true;
     setControlsEnabled(true);
@@ -151,6 +155,81 @@
     committedTime = 0;
     updateProgressUI();
   });
+
+  // ---------------------------------------------------------------------
+  // Create FAISS — enabled once a video is loaded
+  // ---------------------------------------------------------------------
+
+  createFaissBtn.addEventListener('click', () => {
+    createFaissIndex();
+  });
+
+  async function createFaissIndex() {
+    if (!currentVideoName) return;
+
+    // Block further clicks and video changes until the backend responds —
+    // extraction runs synchronously server-side and can take a while.
+    createFaissBtn.disabled = true;
+    videoInput.disabled = true;
+    const processing = showProcessingToast('Building FAISS index');
+
+    try {
+      const res = await fetch('/api/extract-frames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_name: currentVideoName }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        processing.finish(data.error || 'Error: no shot_boudaries_file found.', 3000);
+        return;
+      }
+
+      if (data.skipped) {
+        processing.finish(data.message || 'Dataset already available for this video.', 3000);
+        return;
+      }
+
+      processing.finish('FAISS index created.');
+    } catch (err) {
+      processing.finish('Could not reach the Python backend.', 3000);
+    } finally {
+      createFaissBtn.disabled = false;
+      videoInput.disabled = false;
+    }
+  }
+
+  function showToast(message, duration = 2000) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    videoWrapper.appendChild(toast);
+    if (duration != null) setTimeout(() => toast.remove(), duration);
+    return toast;
+  }
+
+  // A toast with a spinner and animated "..." that stays until finish() is
+  // called — used while an async backend call is in flight.
+  function showProcessingToast(message) {
+    const toast = showToast(message, null);
+    toast.classList.add('processing');
+
+    let dots = 0;
+    const interval = setInterval(() => {
+      dots = (dots + 1) % 4;
+      toast.textContent = message + '.'.repeat(dots);
+    }, 400);
+
+    return {
+      finish(finalMessage, duration = 2000) {
+        clearInterval(interval);
+        toast.classList.remove('processing');
+        toast.textContent = finalMessage;
+        setTimeout(() => toast.remove(), duration);
+      },
+    };
+  }
 
   // ---------------------------------------------------------------------
   // Keyboard shortcuts — Space: play/pause, A: add pin at current time

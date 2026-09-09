@@ -8,6 +8,18 @@ folder and exposes:
   POST /api/videos             - receives an opened video, stores it under
                                   database/<video name>/ and reports back
                                   the path to use as the reference copy.
+  POST /api/extract-frames     - given {"video_name": ...}, builds
+                                  database/<video name>/<video name>.faiss
+                                  (next to the video and its shot-boundaries
+                                  json, not inside frames/):
+                                  1. if that .faiss file already exists, does
+                                     nothing (reports it as skipped);
+                                  2. elif database/<video name>/frames/ already
+                                     has frames, builds the index from them;
+                                  3. else looks for that video's
+                                     *_shot_boundaries_datamodel.json,
+                                     errors if missing, otherwise extracts
+                                     the frames and then builds the index.
 
 Run:
     python3 server.py
@@ -26,9 +38,19 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from models.frame_extractor import (
+    extract_frames_from_video,
+    find_shot_boundaries_json,
+    frames_dir_for_video,
+    has_extracted_frames,
+)
+from models.write_faiss_index import build_index_for_frames, has_faiss_index
+
 PORT = 8000
 STATIC_DIR = Path(__file__).resolve().parent
 DATABASE_DIR = STATIC_DIR / "database"
+NO_SHOT_BOUNDARIES_ERROR = "Error: no shot_boudaries_file found."
+EXISTING_DATASET_MESSAGE = "Dataset already available for this video."
 
 
 def process_query(query: str) -> str:
@@ -129,6 +151,8 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/videos":
             self.handle_upload_video()
+        elif parsed.path == "/api/extract-frames":
+            self.handle_extract_frames()
         else:
             self.send_error(404)
 
@@ -162,6 +186,46 @@ class Handler(SimpleHTTPRequestHandler):
         rel_path = "/" + str(target.relative_to(STATIC_DIR)).replace("\\", "/")
         self.respond_json({"name": video_name, "path": rel_path, "reused": reused})
 
+    def handle_extract_frames(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else b""
+        try:
+            payload = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            payload = {}
+
+        video_name = sanitize_name(payload.get("video_name", ""))
+        video_dir = DATABASE_DIR / video_name
+        video_path = find_existing_video(video_dir) if video_dir.is_dir() else None
+        if not video_path:
+            self.respond_json({"error": NO_SHOT_BOUNDARIES_ERROR}, status=404)
+            return
+
+        # 1. A FAISS index already exists for this video -> nothing to do.
+        if has_faiss_index(str(video_path), video_name):
+            self.respond_json({"skipped": True, "message": EXISTING_DATASET_MESSAGE})
+            return
+
+        frames_dir = frames_dir_for_video(str(video_path))
+
+        # 2. Frames were already extracted -> build the index straight from
+        #    them, no need to touch the shot-boundaries json again.
+        if not has_extracted_frames(str(video_path)):
+            # 3. Nothing exists yet -> need the shot-boundaries json to
+            #    extract frames before an index can be built at all.
+            try:
+                find_shot_boundaries_json(str(video_path))
+            except FileNotFoundError:
+                self.respond_json({"error": NO_SHOT_BOUNDARIES_ERROR}, status=404)
+                return
+            extract_frames_from_video(str(video_path))
+
+        index_path = build_index_for_frames(str(video_path), frames_dir, video_name)
+
+        rel_output = "/" + str(Path(frames_dir).relative_to(STATIC_DIR)).replace("\\", "/")
+        rel_index = "/" + str(Path(index_path).relative_to(STATIC_DIR)).replace("\\", "/")
+        self.respond_json({"output_dir": rel_output, "faiss_path": rel_index})
+
     def save_body_to_file(self, target: Path, length: int):
         with open(target, "wb") as f:
             remaining = length
@@ -172,9 +236,9 @@ class Handler(SimpleHTTPRequestHandler):
                 f.write(chunk)
                 remaining -= len(chunk)
 
-    def respond_json(self, payload: dict):
+    def respond_json(self, payload: dict, status: int = 200):
         body = json.dumps(payload).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -182,7 +246,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         # keep the console readable during the POC
-        if urlparse(self.path).path in ("/api/search", "/api/videos"):
+        if urlparse(self.path).path in ("/api/search", "/api/videos", "/api/extract-frames"):
             super().log_message(format, *args)
 
     def handle_one_request(self):

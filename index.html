@@ -12,10 +12,13 @@
 
   <header class="topbar">
     <h1>Video<span>Search</span></h1>
-    <label class="file-btn">
-      Load video
-      <input type="file" id="videoFileInput" accept="video/*" hidden>
-    </label>
+    <div class="topbar-actions">
+      <label class="file-btn">
+        Load video
+        <input type="file" id="videoFileInput" accept="video/*" hidden>
+      </label>
+      <button id="createFaissBtn" class="file-btn" title="Build a FAISS index for the loaded video" disabled>Create FAISS</button>
+    </div>
   </header>
 
   <main class="main">
