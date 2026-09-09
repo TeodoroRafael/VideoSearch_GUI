@@ -21,6 +21,7 @@ import functools
 import json
 import os
 import re
+import socket
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -115,7 +116,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(length))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            # The browser aborts in-flight range requests whenever the user
+            # seeks again before the previous chunk finished sending — that's
+            # normal <video> scrubbing behavior, not a server error.
+            pass
         return True
 
     def do_POST(self):
@@ -177,6 +184,14 @@ class Handler(SimpleHTTPRequestHandler):
         # keep the console readable during the POC
         if urlparse(self.path).path in ("/api/search", "/api/videos"):
             super().log_message(format, *args)
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            # Client (e.g. the <video> element) closed the connection
+            # mid-transfer, which happens routinely during seeking.
+            self.close_connection = True
 
 
 if __name__ == "__main__":
