@@ -15,7 +15,7 @@ import torch
 import faiss
 faiss.omp_set_num_threads(1)
 
-from models.configs import get_model_config
+from models.configs import load_vlm_wrapper
 from models.frame_extractor import frames_dir_for_video, get_video_fps
 from models.write_faiss_index import faiss_index_path
 
@@ -58,13 +58,9 @@ def embed_query(
     if device is None:
         device = get_device()
 
-    model_config = get_model_config(model_family, model_id)
-    processor = model_config["processor_class"].from_pretrained(model_config["model_id"])
-    model = model_config["model_class"].from_pretrained(model_config["model_id"])
-    wrapper = model_config["wrapper_class"](model=model, processor=processor)
-
-    model.to(device)
-    model.eval()
+    # Cached across requests — see load_vlm_wrapper() — so repeated searches
+    # don't pay from_pretrained()'s cost (a few seconds) every time.
+    wrapper = load_vlm_wrapper(model_family, model_id, device)
 
     inputs = wrapper.process_inputs(text=[query])
     with torch.no_grad():

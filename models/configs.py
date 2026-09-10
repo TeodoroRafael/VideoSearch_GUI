@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Dict, Optional
 
 from transformers import (
@@ -44,3 +45,34 @@ def get_model_config(
     if model_id is not None:
         config["model_id"] = model_id
     return config
+
+
+# Loaded (model, processor) pairs are expensive (a multi-second from_pretrained
+# call each) and safe to reuse read-only across requests, so keep one instance
+# per (model_family, model_id, device) alive for the life of the process
+# instead of reloading it on every call site. The lock serializes concurrent
+# first-time loads of the *same* entry so two requests don't race to build it
+# twice; already-cached lookups just return the cached wrapper.
+_VLM_WRAPPER_CACHE: Dict[Any, Any] = {}
+_VLM_WRAPPER_CACHE_LOCK = threading.Lock()
+
+
+def load_vlm_wrapper(
+        model_family: str,
+        model_id: Optional[str] = None,
+        device: str = "cpu",
+) -> Any:
+    with _VLM_WRAPPER_CACHE_LOCK:
+        config = get_model_config(model_family, model_id)
+        cache_key = (model_family, config["model_id"], device)
+
+        wrapper = _VLM_WRAPPER_CACHE.get(cache_key)
+        if wrapper is None:
+            processor = config["processor_class"].from_pretrained(config["model_id"])
+            model = config["model_class"].from_pretrained(config["model_id"])
+            model.to(device)
+            model.eval()
+            wrapper = config["wrapper_class"](model=model, processor=processor)
+            _VLM_WRAPPER_CACHE[cache_key] = wrapper
+
+        return wrapper

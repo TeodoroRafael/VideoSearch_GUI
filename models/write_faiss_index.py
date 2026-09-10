@@ -14,7 +14,7 @@ import faiss
 from PIL import Image
 from tqdm import tqdm
 
-from models.configs import get_model_config
+from models.configs import get_model_config, load_vlm_wrapper
 
 
 def parse_args():
@@ -249,13 +249,10 @@ def build_index_for_frames(
 
     image_paths = get_image_paths(frames_dir)
 
-    model_config = get_model_config(model_family, model_id)
-    processor = model_config["processor_class"].from_pretrained(model_config["model_id"])
-    model = model_config["model_class"].from_pretrained(model_config["model_id"])
-    wrapper = model_config["wrapper_class"](model=model, processor=processor)
-
-    model.to(device)
-    model.eval()
+    # Cached across calls (shared with models/search.py) — see
+    # load_vlm_wrapper() — so a search right after Create FAISS reuses the
+    # model this just loaded instead of loading it again.
+    wrapper = load_vlm_wrapper(model_family, model_id, device)
 
     features, paths = encode_images(wrapper, image_paths, batch_size)
     feature_dim = features.shape[1]

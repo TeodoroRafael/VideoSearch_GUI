@@ -200,6 +200,14 @@ Notes:
 - `search_frames()` reuses the exact same FAISS index and CLIP model the
   Create FAISS button built — both index and query vectors are L2-normalized,
   so `IndexFlatIP`'s inner product *is* cosine similarity.
+- The loaded (model, processor) pair is cached process-wide by
+  `models.configs.load_vlm_wrapper()`, keyed by
+  `(model_family, model_id, device)`, and shared between `search.py` and
+  `write_faiss_index.build_index_for_frames()` — so `from_pretrained()`
+  (several seconds) only runs once per process, not on every search. A lock
+  around the cache serializes concurrent first-time loads of the same entry
+  instead of racing to build it twice; once cached, lookups are effectively
+  free and don't block each other.
 - A frame's playback time is derived from its filename
   (`frame_<dimension_idx>.jpg`) divided by the video's fps
   (`frame_extractor.get_video_fps()`, read straight from the video file via
@@ -238,9 +246,6 @@ Both are ignored while focus is on a text input (e.g. the search box).
 - Search results aren't tied back to pins/markers — clicking a result seeks
   the player to that frame's time, but no marker is dropped on the timeline
   for it.
-- Every search request reloads CLIP from scratch (`from_pretrained`, no
-  caching across requests) — fine as a POC, but the first query after the
-  server starts is noticeably slower until Hugging Face's local cache is warm.
 - The shot-boundaries json (`*_shot_boundaries_datamodel.json`) is expected
   to already exist next to the video, produced by a separate upstream
   pipeline — `server.py`/`frame_extractor.py` only read it, they don't
