@@ -169,16 +169,16 @@ sequenceDiagram
     U->>FE: types a query, clicks Search (or presses Enter)
 
     alt query is empty
-        FE->>FE: renderPinResults() — lists the video's markers (pins), unrelated to FAISS
+        FE->>FE: no-op — searchForm submit handler returns early
     else query is non-empty
-        FE->>BE: GET /api/search?q=<query>&video_name=<name>
+        FE->>BE: GET /api/search?q=<query>&video_name=<name>&k=<kSlider value>
         alt no video / no <video name>.faiss yet
             BE-->>FE: { results: [], message: "No FAISS dataset..." }
         else dataset exists
-            BE->>M: search_frames(video_path, video_name, query, k=10)
+            BE->>M: search_frames(video_path, video_name, query, k)
             M->>FS: faiss.read_index(<video name>.faiss) + load <video name>_id_map.json
             M->>M: embed_query() — CLIP text embedding, L2-normalized
-            M->>FS: index.search() — top-10 by cosine similarity (inner product on normalized vectors)
+            M->>FS: index.search() — top-k by cosine similarity (inner product on normalized vectors)
             M-->>BE: [{ label, path, frame_idx, time, score }, ...]
             BE-->>FE: { results: [{ label, time, score, url }, ...] }
         end
@@ -187,10 +187,16 @@ sequenceDiagram
 
     U->>FE: clicks a result card
     FE->>FE: seeks the player to that frame's time
+
+    U->>FE: drags the "Results" slider (1-50, default 5)
+    FE->>FE: reruns the last non-empty search with the new k, if one was made
 ```
 
 Notes:
 
+- The search box, its button, and the k slider are all disabled until a
+  video is loaded, and the slider resets to its default (5) every time a
+  new video loads (`resetSearchResults()` in [app.js](app.js)).
 - `search_frames()` reuses the exact same FAISS index and CLIP model the
   Create FAISS button built — both index and query vectors are L2-normalized,
   so `IndexFlatIP`'s inner product *is* cosine similarity.

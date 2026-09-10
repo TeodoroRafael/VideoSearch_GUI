@@ -65,9 +65,13 @@
       <div class="search-header">
         <h2>Search in video</h2>
         <form id="searchForm" class="search-form">
-          <input type="text" id="searchInput" placeholder="Search by marker, keyword..." autocomplete="off">
-          <button type="submit" id="searchBtn">🔍 Search</button>
+          <input type="text" id="searchInput" placeholder="Search by marker, keyword..." autocomplete="off" disabled>
+          <button type="submit" id="searchBtn" disabled>🔍 Search</button>
         </form>
+        <div class="k-slider" title="Number of results to retrieve">
+          <label for="kSlider">Results: <span id="kValue">5</span></label>
+          <input type="range" id="kSlider" min="1" max="50" value="5" disabled>
+        </div>
       </div>
 
       <div id="searchResults" class="search-results">

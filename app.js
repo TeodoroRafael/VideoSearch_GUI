@@ -4,11 +4,10 @@
 // This file handles: the player, the timeline with hover-preview, pins
 // (markers), Create FAISS, and the search box.
 //
-// performSearch(query) calls GET /api/search?q=...&video_name=... (server.py
-// -> models/search.py), which embeds the query with CLIP and searches the
-// loaded video's FAISS dataset for the closest shot-boundary frames — see
-// ARCHITECTURE.md. An empty query instead just lists the video's markers
-// (pins), unrelated to that search.
+// performSearch(query) calls GET /api/search?q=...&video_name=...&k=... (
+// server.py -> models/search.py), which embeds the query with CLIP and
+// searches the loaded video's FAISS dataset for the closest shot-boundary
+// frames — see ARCHITECTURE.md. Submitting an empty query is a no-op.
 // ============================================================================
 
 (() => {
@@ -33,7 +32,12 @@
 
   const searchForm       = document.getElementById('searchForm');
   const searchInput        = document.getElementById('searchInput');
+  const searchBtn           = document.getElementById('searchBtn');
   const searchResults        = document.getElementById('searchResults');
+  const kSlider           = document.getElementById('kSlider');
+  const kValueEl            = document.getElementById('kValue');
+
+  const DEFAULT_K = 5;
 
   const captureVideo       = document.getElementById('captureVideo');
   const captureCanvas        = document.getElementById('captureCanvas');
@@ -43,6 +47,8 @@
   let committedTime = 0;  // actual playhead position (outside of hover-preview)
   let isHovering = false;
   let currentVideoName = null; // database/<currentVideoName>/ for the loaded video
+  let lastSearchQuery = null;  // last non-empty query actually sent to the backend
+  let lastSearchK = null;      // k used for that last search
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -59,6 +65,9 @@
     addPinBtn.disabled = !enabled;
     fullscreenBtn.disabled = !enabled;
     createFaissBtn.disabled = !enabled;
+    searchInput.disabled = !enabled;
+    searchBtn.disabled = !enabled;
+    kSlider.disabled = !enabled;
   }
 
   // ---------------------------------------------------------------------
@@ -494,17 +503,24 @@
   searchForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const query = searchInput.value.trim();
+    if (!query) return; // nothing written -> don't search
     performSearch(query);
   });
 
-  async function performSearch(query) {
-    // Empty query: fall back to just listing the video's markers, same as
-    // before this searched a real FAISS dataset.
-    if (!query) {
-      renderPinResults(pins.slice(), query);
-      return;
-    }
+  // k (number of results to retrieve) — update the live label while
+  // dragging, but only rerun the last search once the user lets go
+  // ('change', not 'input') and only if k actually moved since that search.
+  kSlider.addEventListener('input', () => {
+    kValueEl.textContent = kSlider.value;
+  });
 
+  kSlider.addEventListener('change', () => {
+    if (lastSearchQuery && Number(kSlider.value) !== lastSearchK) {
+      performSearch(lastSearchQuery);
+    }
+  });
+
+  async function performSearch(query) {
     if (!currentVideoName) {
       renderSearchMessage('Load a video first.');
       return;
@@ -515,7 +531,7 @@
     let data;
     try {
       const res = await fetch(
-        `/api/search?q=${encodeURIComponent(query)}&video_name=${encodeURIComponent(currentVideoName)}`
+        `/api/search?q=${encodeURIComponent(query)}&video_name=${encodeURIComponent(currentVideoName)}&k=${encodeURIComponent(kSlider.value)}`
       );
       data = await res.json();
     } catch (err) {
@@ -528,6 +544,8 @@
       return;
     }
 
+    lastSearchQuery = query;
+    lastSearchK = Number(kSlider.value);
     renderFrameResults(data.results || [], query);
   }
 
@@ -537,30 +555,6 @@
     p.className = 'results-placeholder';
     p.textContent = message;
     searchResults.appendChild(p);
-  }
-
-  function renderPinResults(list, query) {
-    searchResults.innerHTML = '';
-
-    if (!pins.length) {
-      renderSearchMessage('Add markers to the video ("📌 Mark" button) so you can search them here.');
-      return;
-    }
-
-    if (!list.length) {
-      renderSearchMessage(`No results for "${query}".`);
-      return;
-    }
-
-    for (const pin of list) {
-      const card = buildResultCard({ thumb: pin.thumb || '', label: pin.label, caption: formatTime(pin.time) });
-      card.addEventListener('click', () => {
-        committedTime = pin.time;
-        video.currentTime = pin.time;
-        highlightPin(pin.id);
-      });
-      searchResults.appendChild(card);
-    }
   }
 
   // results: [{ label, time, score, url }], as returned by
@@ -618,6 +612,10 @@
 
   function resetSearchResults() {
     searchInput.value = '';
+    lastSearchQuery = null;
+    lastSearchK = null;
+    kSlider.value = DEFAULT_K;
+    kValueEl.textContent = DEFAULT_K;
     searchResults.innerHTML = '';
     const p = document.createElement('p');
     p.className = 'results-placeholder';

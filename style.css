@@ -374,6 +374,11 @@ html, body{
   border-color: var(--accent);
 }
 
+.search-form input:disabled{
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .search-form button{
   background: var(--accent);
   color: #fff;
@@ -385,8 +390,46 @@ html, body{
   white-space: nowrap;
 }
 
-.search-form button:hover{
+.search-form button:hover:not(:disabled){
   background: #3d78e6;
+}
+
+.search-form button:disabled{
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.k-slider input[type="range"]:disabled{
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.k-slider{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.k-slider label{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.k-slider #kValue{
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 1.5em;
+  text-align: right;
+}
+
+.k-slider input[type="range"]{
+  width: 120px;
+  accent-color: var(--accent);
 }
 
 .search-results{

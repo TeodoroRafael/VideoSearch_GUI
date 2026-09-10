@@ -4,11 +4,12 @@ VideoSearch GUI - proof of concept backend.
 Serves the static front-end (index.html/style.css/app.js) from this same
 folder and exposes:
 
-  GET  /api/search?q=<query>&video_name=<name>
+  GET  /api/search?q=<query>&video_name=<name>&k=<k>
                                 - embeds <query> with CLIP and searches that
                                   video's <video name>.faiss (models/search.py)
-                                  for the 10 most similar shot-boundary
-                                  frames, returned as
+                                  for the k most similar shot-boundary frames
+                                  (k defaults to 5, clamped to [1, 50]),
+                                  returned as
                                   { query, results: [{ label, time, score, url }] }.
                                   Empty results carry a "message" when there's
                                   no video / no FAISS dataset built yet.
@@ -82,7 +83,9 @@ DATABASE_DIR = STATIC_DIR / "database"
 NO_SHOT_BOUNDARIES_ERROR = "Error: no shot_boudaries_file found."
 EXISTING_DATASET_MESSAGE = "Dataset already available for this video."
 NO_DATASET_MESSAGE = "No FAISS dataset for this video yet — click Create FAISS first."
-SEARCH_RESULT_COUNT = 10
+DEFAULT_SEARCH_RESULT_COUNT = 5
+MIN_SEARCH_RESULT_COUNT = 1
+MAX_SEARCH_RESULT_COUNT = 50
 
 
 def sanitize_name(name: str) -> str:
@@ -205,6 +208,12 @@ class Handler(SimpleHTTPRequestHandler):
         query = params.get("q", [""])[0].strip()
         video_name = sanitize_name(params.get("video_name", [""])[0])
 
+        try:
+            k = int(params.get("k", [""])[0])
+        except ValueError:
+            k = DEFAULT_SEARCH_RESULT_COUNT
+        k = max(MIN_SEARCH_RESULT_COUNT, min(k, MAX_SEARCH_RESULT_COUNT))
+
         if not query:
             self.respond_json({"query": query, "results": []})
             return
@@ -215,7 +224,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.respond_json({"query": query, "results": [], "message": NO_DATASET_MESSAGE})
             return
 
-        matches = search_frames(str(video_path), video_name, query, k=SEARCH_RESULT_COUNT)
+        matches = search_frames(str(video_path), video_name, query, k=k)
         results = [
             {
                 "label": match["label"],
