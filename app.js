@@ -1,15 +1,14 @@
 // ============================================================================
 // VideoSearch GUI — front-end / layout layer.
 //
-// This file only handles: the player, the timeline with hover-preview, pins
-// (markers), and the search box interaction with the results grid.
+// This file handles: the player, the timeline with hover-preview, pins
+// (markers), Create FAISS, and the search box.
 //
-// Backend integration points (marked with "BACKEND:"):
-//   1. performSearch(query) — currently filters pins locally by label.
-//      Replace it with the real fetch/call that returns the matching frames.
-//   2. Each pin has { id, time, label, thumb }. `label` is the only
-//      "business" field today; that's where the information the backend
-//      attaches to each marker (transcript, tags, embeddings, etc.) goes.
+// performSearch(query) calls GET /api/search?q=...&video_name=... (server.py
+// -> models/search.py), which embeds the query with CLIP and searches the
+// loaded video's FAISS dataset for the closest shot-boundary frames — see
+// ARCHITECTURE.md. An empty query instead just lists the video's markers
+// (pins), unrelated to that search.
 // ============================================================================
 
 (() => {
@@ -418,95 +417,122 @@
   });
 
   async function performSearch(query) {
-    // POC: call the Python backend (server.py -> GET /api/search?q=...)
-    // just to prove the search box is wired end-to-end. It currently
-    // only echoes the query back with "searching" appended.
-    //
-    // BACKEND: replace process_query() in server.py with the real search
-    // logic, and have it return the frames matching `query` instead of
-    // this placeholder string.
-    const backendMessage = query ? await fetchBackendEcho(query) : null;
-
-    // Local fallback so existing pins stay searchable while the real
-    // backend search isn't implemented yet.
-    const q = query.toLowerCase();
-    const matches = q
-      ? pins.filter((p) => p.label.toLowerCase().includes(q))
-      : pins.slice();
-
-    renderResults(matches, query, backendMessage);
-  }
-
-  async function fetchBackendEcho(query) {
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data.result;
-    } catch (err) {
-      // server.py isn't running / not reachable — fail silently for the POC
-      return null;
+    // Empty query: fall back to just listing the video's markers, same as
+    // before this searched a real FAISS dataset.
+    if (!query) {
+      renderPinResults(pins.slice(), query);
+      return;
     }
+
+    if (!currentVideoName) {
+      renderSearchMessage('Load a video first.');
+      return;
+    }
+
+    renderSearchMessage('Searching...');
+
+    let data;
+    try {
+      const res = await fetch(
+        `/api/search?q=${encodeURIComponent(query)}&video_name=${encodeURIComponent(currentVideoName)}`
+      );
+      data = await res.json();
+    } catch (err) {
+      renderSearchMessage('Could not reach the Python backend.');
+      return;
+    }
+
+    if (data.message) {
+      renderSearchMessage(data.message);
+      return;
+    }
+
+    renderFrameResults(data.results || [], query);
   }
 
-  function renderResults(list, query, backendMessage) {
+  function renderSearchMessage(message) {
+    searchResults.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'results-placeholder';
+    p.textContent = message;
+    searchResults.appendChild(p);
+  }
+
+  function renderPinResults(list, query) {
     searchResults.innerHTML = '';
 
-    if (backendMessage) {
-      const echo = document.createElement('div');
-      echo.className = 'backend-echo';
-      echo.textContent = `Python backend: "${backendMessage}"`;
-      searchResults.appendChild(echo);
-    }
-
     if (!pins.length) {
-      const p = document.createElement('p');
-      p.className = 'results-placeholder';
-      p.textContent = 'Add markers to the video ("📌 Mark" button) so you can search them here.';
-      searchResults.appendChild(p);
+      renderSearchMessage('Add markers to the video ("📌 Mark" button) so you can search them here.');
       return;
     }
 
     if (!list.length) {
-      const p = document.createElement('p');
-      p.className = 'results-placeholder';
-      p.textContent = `No results for "${query}".`;
-      searchResults.appendChild(p);
+      renderSearchMessage(`No results for "${query}".`);
       return;
     }
 
     for (const pin of list) {
-      const card = document.createElement('div');
-      card.className = 'result-card';
-
-      const img = document.createElement('img');
-      img.src = pin.thumb || '';
-      img.alt = pin.label;
-
-      const meta = document.createElement('div');
-      meta.className = 'result-meta';
-
-      const label = document.createElement('div');
-      label.className = 'result-label';
-      label.textContent = pin.label;
-
-      const time = document.createElement('div');
-      time.className = 'result-time';
-      time.textContent = formatTime(pin.time);
-
-      meta.appendChild(label);
-      meta.appendChild(time);
-      card.appendChild(img);
-      card.appendChild(meta);
-
+      const card = buildResultCard({ thumb: pin.thumb || '', label: pin.label, caption: formatTime(pin.time) });
       card.addEventListener('click', () => {
         committedTime = pin.time;
         video.currentTime = pin.time;
         highlightPin(pin.id);
       });
-
       searchResults.appendChild(card);
     }
+  }
+
+  // results: [{ label, time, score, url }], as returned by
+  // GET /api/search?q=...&video_name=... (models/search.py's FAISS
+  // cosine-similarity search over the video's shot-boundary frames).
+  function renderFrameResults(results, query) {
+    searchResults.innerHTML = '';
+
+    if (!results.length) {
+      renderSearchMessage(`No results for "${query}".`);
+      return;
+    }
+
+    for (const result of results) {
+      const card = buildResultCard({
+        thumb: result.url,
+        label: result.time != null ? formatTime(result.time) : result.label,
+        caption: `similarity ${result.score.toFixed(3)}`,
+      });
+      card.addEventListener('click', () => {
+        if (result.time == null) return;
+        committedTime = result.time;
+        video.currentTime = result.time;
+      });
+      searchResults.appendChild(card);
+    }
+  }
+
+  function buildResultCard({ thumb, label, caption }) {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+
+    const img = document.createElement('img');
+    img.src = thumb;
+    img.alt = label;
+
+    const meta = document.createElement('div');
+    meta.className = 'result-meta';
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'result-label';
+    labelEl.textContent = label;
+
+    const captionEl = document.createElement('div');
+    captionEl.className = 'result-time';
+    captionEl.textContent = caption;
+
+    meta.appendChild(labelEl);
+    meta.appendChild(captionEl);
+    card.appendChild(img);
+    card.appendChild(meta);
+
+    return card;
   }
 
   function resetSearchResults() {

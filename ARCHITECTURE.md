@@ -16,7 +16,8 @@ now that it builds CLIP-based FAISS datasets.
 | [server.py](server.py) | Serves the static files, stores/reuses uploaded videos under `database/`, exposes `/api/search`, `/api/videos`, `/api/extract-frames` |
 | [models/frame_extractor.py](models/frame_extractor.py) | Reads a video's `*_shot_boundaries_datamodel.json` and saves one `.jpg` per shot-boundary `dimension_idx` into `frames/` next to the video |
 | [models/write_faiss_index.py](models/write_faiss_index.py) | Encodes a folder of frames with a VLM (CLIP by default) and writes/loads the resulting FAISS index; also the standalone `write_faiss_index.py` CLI for building an index over an arbitrary image folder |
-| [models/configs.py](models/configs.py), [models/clip.py](models/clip.py), [models/siglip.py](models/siglip.py), [models/llava.py](models/llava.py), [models/vlm_wrapper.py](models/vlm_wrapper.py), [models/utils.py](models/utils.py) | VLM model/processor wrappers (CLIP, SigLIP, LLaVA) that `write_faiss_index.py` picks between via `model_family` |
+| [models/search.py](models/search.py) | Embeds a text query with the same VLM and searches a video's FAISS index for the `k` most similar frames (cosine similarity) |
+| [models/configs.py](models/configs.py), [models/clip.py](models/clip.py), [models/siglip.py](models/siglip.py), [models/llava.py](models/llava.py), [models/vlm_wrapper.py](models/vlm_wrapper.py), [models/utils.py](models/utils.py) | VLM model/processor wrappers (CLIP, SigLIP, LLaVA) that `write_faiss_index.py` and `search.py` pick between via `model_family` |
 | `requirements.txt` | pip dependencies for `server.py` and the `models/` package (torch, transformers, faiss-cpu, opencv-python-headless, ...) |
 | `database/<video name>/<file>` | On-disk reference copy of each opened video (created on first open, reused after) |
 | `database/<video name>/<video name>.faiss`, `..._id_map.json` | FAISS dataset built by the Create FAISS button — index + id→path lookup, saved next to the video |
@@ -34,7 +35,7 @@ graph TD
     subgraph "Python process (server.py)"
         STATIC["Static file handler\n(index.html / style.css / app.js)"]
         RANGE["Range/206 handler\n(video seeking)"]
-        SEARCH["GET /api/search\nprocess_query()"]
+        SEARCH["GET /api/search\nhandle_search()"]
         UPLOAD["POST /api/videos\nfind_existing_video() / save"]
         EXTRACT["POST /api/extract-frames\nhandle_extract_frames()"]
     end
@@ -42,21 +43,24 @@ graph TD
     subgraph "models/"
         FE["frame_extractor.py\nextract_frames_from_video()"]
         WFI["write_faiss_index.py\nbuild_index_for_frames()"]
+        SRCH["search.py\nsearch_frames()"]
     end
 
     DB[("database/<video name>/\nvideo, json, frames/, .faiss")]
 
     JS -- "GET /" --> STATIC
     JS -- "GET video src (Range)" --> RANGE
-    JS -- "GET /api/search?q=" --> SEARCH
+    JS -- "GET /api/search?q=&video_name=" --> SEARCH
     JS -- "POST /api/videos" --> UPLOAD
     JS -- "POST /api/extract-frames\n(Create FAISS click)" --> EXTRACT
     RANGE --> DB
     UPLOAD --> DB
     EXTRACT --> FE
     EXTRACT --> WFI
+    SEARCH --> SRCH
     FE --> DB
     WFI --> DB
+    SRCH --> DB
 ```
 
 ## Flow: opening a video
@@ -149,31 +153,61 @@ Notes:
 
 ## Flow: searching
 
+`searchForm` submit handler in [app.js](app.js) → `performSearch()` →
+`GET /api/search` → `handle_search()` in [server.py](server.py) →
+`search.search_frames()`, which embeds the query with CLIP and does a
+cosine-similarity search over the video's FAISS index:
+
 ```mermaid
 sequenceDiagram
     participant U as User
     participant FE as app.js
     participant BE as server.py
+    participant M as models/search.py
+    participant FS as database/<video name>/ (disk)
 
     U->>FE: types a query, clicks Search (or presses Enter)
-    FE->>BE: GET /api/search?q=<query>
-    BE->>BE: process_query(query) — POC placeholder
-    BE-->>FE: { query, result }
-    FE->>FE: renderResults() — shows the backend echo + pins whose\nlabel matches the query (local fallback)
+
+    alt query is empty
+        FE->>FE: renderPinResults() — lists the video's markers (pins), unrelated to FAISS
+    else query is non-empty
+        FE->>BE: GET /api/search?q=<query>&video_name=<name>
+        alt no video / no <video name>.faiss yet
+            BE-->>FE: { results: [], message: "No FAISS dataset..." }
+        else dataset exists
+            BE->>M: search_frames(video_path, video_name, query, k=10)
+            M->>FS: faiss.read_index(<video name>.faiss) + load <video name>_id_map.json
+            M->>M: embed_query() — CLIP text embedding, L2-normalized
+            M->>FS: index.search() — top-10 by cosine similarity (inner product on normalized vectors)
+            M-->>BE: [{ label, path, frame_idx, time, score }, ...]
+            BE-->>FE: { results: [{ label, time, score, url }, ...] }
+        end
+        FE->>FE: renderFrameResults() — one card per match (frame image, time, similarity score)
+    end
+
     U->>FE: clicks a result card
-    FE->>FE: seeks the player to that pin's time
+    FE->>FE: seeks the player to that frame's time
 ```
 
-`process_query()` in [server.py](server.py) and the local label filter in
-`performSearch()` in [app.js](app.js) are both placeholders — the intended
-integration point for real search logic (embeddings, a model, whatever
-ends up finding frames for a query). Search results are expected to come
-back as frames, each tied to a pin (`{ pinId, time, label, thumbnailUrl }`).
+Notes:
 
-The per-video FAISS index built by the Create FAISS button (see above) is
-the dataset this real search is meant to query — encode the text query with
-the same CLIP model, `faiss.read_index()` the video's `.faiss` file, and
-search it — but `process_query()` doesn't do that yet.
+- `search_frames()` reuses the exact same FAISS index and CLIP model the
+  Create FAISS button built — both index and query vectors are L2-normalized,
+  so `IndexFlatIP`'s inner product *is* cosine similarity.
+- A frame's playback time is derived from its filename
+  (`frame_<dimension_idx>.jpg`) divided by the video's fps
+  (`frame_extractor.get_video_fps()`, read straight from the video file via
+  OpenCV) — not from the shot-boundaries json, so search still works even if
+  that json is later removed.
+- **Threading gotcha**: unlike `write_faiss_index.py` (which only ever calls
+  `index.add()`), `search.py` calls `index.search()` — and doing that from a
+  `ThreadingHTTPServer` request thread that already ran a torch forward pass
+  in the same process segfaults, even with the torch-before-faiss import
+  order and `faiss.omp_set_num_threads(1)`. [server.py](server.py) works
+  around it by setting `OMP_NUM_THREADS=1` and `KMP_DUPLICATE_LIB_OK=TRUE`
+  as environment variables *before* importing anything that pulls in
+  torch/faiss — that has to happen at the very top of the file, since OpenMP
+  reads them at library-load time.
 
 ## In-page state (app.js)
 
@@ -195,10 +229,12 @@ Both are ignored while focus is on a text input (e.g. the search box).
 
 ## Known POC boundaries
 
-- `process_query()` (server.py) — swap for real search logic that queries
-  the FAISS dataset the Create FAISS button already builds.
-- `performSearch()` (app.js) — swap the local pin-label filter for the
-  frames the real search endpoint returns.
+- Search results aren't tied back to pins/markers — clicking a result seeks
+  the player to that frame's time, but no marker is dropped on the timeline
+  for it.
+- Every search request reloads CLIP from scratch (`from_pretrained`, no
+  caching across requests) — fine as a POC, but the first query after the
+  server starts is noticeably slower until Hugging Face's local cache is warm.
 - The shot-boundaries json (`*_shot_boundaries_datamodel.json`) is expected
   to already exist next to the video, produced by a separate upstream
   pipeline — `server.py`/`frame_extractor.py` only read it, they don't

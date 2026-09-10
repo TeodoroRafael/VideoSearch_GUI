@@ -94,7 +94,7 @@ html, body{
 }
 
 .player-section{
-  height: 50vh;
+  height: 65vh;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -406,16 +406,6 @@ html, body{
   font-size: 12.5px;
   line-height: 1.6;
   white-space: normal;
-}
-
-.backend-echo{
-  flex-basis: 100%;
-  background: var(--accent-dim);
-  border: 1px solid var(--accent);
-  color: var(--text);
-  font-size: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
 }
 
 .result-card{

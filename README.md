@@ -25,9 +25,9 @@ VisualReF-based search backend.
 | 6 | **Mark** | Drops a pin at the current playback time. Also bound to the `A` key. |
 | 7 | **Fullscreen** | Expands the player to fill the screen. |
 | 8 | **Timeline / track** | Hovering scrubs a live preview directly in the player (frame at that point, without affecting playback); clicking seeks to that position. |
-| 9 | **Pins (markers)** | One per marked moment. Click to jump to it, double-click to rename, right-click to remove. Each pin is what search results link back to. |
-| 10 | **Search box** | Query field + search button. Search results come back as frames, each linked to a pin. |
-| 11 | **Search results** | The frames matching the query, laid out as a horizontally scrolling strip below the player. Clicking a result seeks the player to that frame's pin. |
+| 9 | **Pins (markers)** | One per marked moment. Click to jump to it, double-click to rename, right-click to remove. Typing an empty query and hitting Search lists them all here. |
+| 10 | **Search box** | Query field + search button. A non-empty query runs a real CLIP-based similarity search over the video's FAISS dataset (built by Create FAISS) and returns its 10 closest frames. |
+| 11 | **Search results** | The matching frames, laid out as a horizontally scrolling strip below the player, each showing its timestamp and similarity score. Clicking a result seeks the player to that frame's time. |
 | 12 | **Create FAISS** | Builds a searchable FAISS dataset for the loaded video — extracting shot-boundary frames and encoding them with CLIP — and reuses whatever's already built rather than redoing it. See [ARCHITECTURE.md](ARCHITECTURE.md) for the exact steps it follows and where each file ends up. |
 
 ## Getting started
@@ -41,13 +41,15 @@ python3 server.py
 
 Then open `http://localhost:8000`. The backend needs the packages in
 [requirements.txt](requirements.txt) (torch, transformers, faiss-cpu,
-opencv-python-headless, ...) — the Create FAISS button uses them to extract
-frames and build a CLIP-based FAISS index per video. The first time it
-runs, it downloads the CLIP model from Hugging Face unless already cached
-locally.
+opencv-python-headless, ...) — Create FAISS and the search box both use them
+(extracting frames, encoding them with CLIP, and, for search, embedding the
+query and running a similarity search over the resulting index). The first
+time either runs, it downloads the CLIP model from Hugging Face unless
+already cached locally. Search only returns results once Create FAISS has
+been run for the loaded video.
 
 ## Architecture
 
-File-by-file breakdown, request/response flow for opening a video and for
-searching, in-page state, and the backend integration points still left as
-placeholders: see [ARCHITECTURE.md](ARCHITECTURE.md).
+File-by-file breakdown, request/response flow for opening a video, building
+a video's FAISS dataset, and searching it, in-page state, and what's still
+left as a POC placeholder: see [ARCHITECTURE.md](ARCHITECTURE.md).

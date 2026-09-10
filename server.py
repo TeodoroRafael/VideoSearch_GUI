@@ -4,7 +4,14 @@ VideoSearch GUI - proof of concept backend.
 Serves the static front-end (index.html/style.css/app.js) from this same
 folder and exposes:
 
-  GET  /api/search?q=<query>   - proves the search box is wired to Python.
+  GET  /api/search?q=<query>&video_name=<name>
+                                - embeds <query> with CLIP and searches that
+                                  video's <video name>.faiss (models/search.py)
+                                  for the 10 most similar shot-boundary
+                                  frames, returned as
+                                  { query, results: [{ label, time, score, url }] }.
+                                  Empty results carry a "message" when there's
+                                  no video / no FAISS dataset built yet.
   POST /api/videos             - receives an opened video, stores it under
                                   database/<video name>/ and reports back
                                   the path to use as the reference copy.
@@ -25,13 +32,22 @@ Run:
     python3 server.py
 Then open:
     http://localhost:8000
-
-Swap process_query() for the real search logic later.
 """
+
+import os
+
+# Must be set before torch/faiss are imported (by the models.* imports
+# below) — OpenMP reads them at library-load time. Without this, faiss's
+# IndexFlatIP.search() (used by /api/search, unlike the add()-only path
+# /api/extract-frames uses) segfaults the whole server the first time it
+# runs in a ThreadingHTTPServer request thread that already ran a torch
+# forward pass in this process. Neither the torch-before-faiss import order
+# nor faiss.omp_set_num_threads(1) alone was enough to prevent it here.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import functools
 import json
-import os
 import re
 import socket
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -44,6 +60,7 @@ from models.frame_extractor import (
     frames_dir_for_video,
     has_extracted_frames,
 )
+from models.search import search_frames
 from models.write_faiss_index import build_index_for_frames, has_faiss_index
 
 PORT = 8000
@@ -51,12 +68,8 @@ STATIC_DIR = Path(__file__).resolve().parent
 DATABASE_DIR = STATIC_DIR / "database"
 NO_SHOT_BOUNDARIES_ERROR = "Error: no shot_boudaries_file found."
 EXISTING_DATASET_MESSAGE = "Dataset already available for this video."
-
-
-def process_query(query: str) -> str:
-    # POC placeholder — swap for the real search logic (embeddings, model
-    # inference, whatever ends up finding frames for `query`).
-    return f"{query} searching"
+NO_DATASET_MESSAGE = "No FAISS dataset for this video yet — click Create FAISS first."
+SEARCH_RESULT_COUNT = 10
 
 
 def sanitize_name(name: str) -> str:
@@ -158,10 +171,30 @@ class Handler(SimpleHTTPRequestHandler):
 
     def handle_search(self, parsed):
         params = parse_qs(parsed.query)
-        query = params.get("q", [""])[0]
-        result = process_query(query)
+        query = params.get("q", [""])[0].strip()
+        video_name = sanitize_name(params.get("video_name", [""])[0])
 
-        self.respond_json({"query": query, "result": result})
+        if not query:
+            self.respond_json({"query": query, "results": []})
+            return
+
+        video_dir = DATABASE_DIR / video_name
+        video_path = find_existing_video(video_dir) if video_dir.is_dir() else None
+        if not video_path or not has_faiss_index(str(video_path), video_name):
+            self.respond_json({"query": query, "results": [], "message": NO_DATASET_MESSAGE})
+            return
+
+        matches = search_frames(str(video_path), video_name, query, k=SEARCH_RESULT_COUNT)
+        results = [
+            {
+                "label": match["label"],
+                "time": match["time"],
+                "score": match["score"],
+                "url": "/" + str(Path(match["path"]).relative_to(STATIC_DIR)).replace("\\", "/"),
+            }
+            for match in matches
+        ]
+        self.respond_json({"query": query, "results": results})
 
     def handle_upload_video(self):
         raw_filename = unquote(self.headers.get("X-Filename", "video"))

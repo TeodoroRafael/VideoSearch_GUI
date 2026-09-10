@@ -34,6 +34,14 @@ def has_extracted_frames(video_path: str) -> bool:
     return os.path.isdir(frames_dir) and bool(glob.glob(os.path.join(frames_dir, "*.jpg")))
 
 
+def get_video_fps(video_path: str) -> float:
+    cap = cv2.VideoCapture(video_path)
+    try:
+        return cap.get(cv2.CAP_PROP_FPS) or 0.0
+    finally:
+        cap.release()
+
+
 def extract_frames(video_path: str, frame_indices: List[int], output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
