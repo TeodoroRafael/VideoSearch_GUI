@@ -64,6 +64,11 @@
   <rect x="530" y="522" width="90" height="32" rx="8" fill="#4f8cff" />
   <text x="575" y="543" fill="#ffffff" font-size="12" text-anchor="middle">🔍 Search</text>
 
+  <!-- results (k) slider -->
+  <text x="945" y="543" fill="#9aa0ac" font-size="12">Results: <tspan fill="#e7e9ee" font-weight="700">5</tspan></text>
+  <rect x="1058" y="536" width="110" height="4" rx="2" fill="#22262f" stroke="#2c303a" />
+  <circle cx="1068" cy="538" r="7" fill="#4f8cff" />
+
   <!-- result cards -->
   <g>
     <rect x="20" y="576" width="170" height="130" rx="8" fill="#22262f" stroke="#2c303a" />
@@ -107,5 +112,6 @@
     <circle cx="170" cy="532" r="13" fill="#ff9f43" /><text x="170" y="537">10</text>
     <circle cx="30" cy="586" r="13" fill="#ff9f43" /><text x="30" y="591">11</text>
     <circle cx="1070" cy="12" r="13" fill="#ff9f43" /><text x="1070" y="17">12</text>
+    <circle cx="945" cy="532" r="13" fill="#ff9f43" /><text x="945" y="537">13</text>
   </g>
 </svg>

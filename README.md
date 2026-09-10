@@ -25,10 +25,11 @@ VisualReF-based search backend.
 | 6 | **Mark** | Drops a pin at the current playback time. Also bound to the `A` key. |
 | 7 | **Fullscreen** | Expands the player to fill the screen. |
 | 8 | **Timeline / track** | Hovering scrubs a live preview directly in the player (frame at that point, without affecting playback); clicking seeks to that position. |
-| 9 | **Pins (markers)** | One per marked moment. Click to jump to it, double-click to rename, right-click to remove. Typing an empty query and hitting Search lists them all here. |
-| 10 | **Search box** | Query field + search button. A non-empty query runs a real CLIP-based similarity search over the video's FAISS dataset (built by Create FAISS) and returns its 10 closest frames. |
+| 9 | **Pins (markers)** | One per marked moment. Click to jump to it, double-click to rename, right-click to remove. Persisted to `database/<video name>/<video name>_pins.json` as you go, so they're still there next time you load that video. |
+| 10 | **Search box** | Query field + search button, disabled until a video is loaded. Submitting an empty query does nothing; a non-empty one runs a real CLIP-based similarity search over the video's FAISS dataset (built by Create FAISS) and returns its k closest frames — see the Results slider. |
 | 11 | **Search results** | The matching frames, laid out as a horizontally scrolling strip below the player, each showing its timestamp and similarity score. Clicking a result seeks the player to that frame's time. |
 | 12 | **Create FAISS** | Builds a searchable FAISS dataset for the loaded video — extracting shot-boundary frames and encoding them with CLIP — and reuses whatever's already built rather than redoing it. See [ARCHITECTURE.md](ARCHITECTURE.md) for the exact steps it follows and where each file ends up. |
+| 13 | **Results slider** | Sets k, how many frames a search returns — 1 to 50, default 5. Disabled until a video is loaded, and reset to 5 every time a new one is. If a search was already made, releasing the slider on a different value reruns it with the new k. |
 
 ## Getting started
 
