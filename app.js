@@ -37,7 +37,14 @@
   const kSlider           = document.getElementById('kSlider');
   const kValueEl            = document.getElementById('kValue');
 
+  const resultActions        = document.getElementById('resultActions');
+  const selectFramesBtn        = document.getElementById('selectFramesBtn');
+  const feedbackBtn         = document.getElementById('feedbackBtn');
+
   const DEFAULT_K = 5;
+
+  let selectFramesMode = false;
+  let selectedFrames = new Set(); // result-card elements currently selected
 
   const captureVideo       = document.getElementById('captureVideo');
   const captureCanvas        = document.getElementById('captureCanvas');
@@ -555,6 +562,7 @@
     p.className = 'results-placeholder';
     p.textContent = message;
     searchResults.appendChild(p);
+    setResultActionsVisible(false);
   }
 
   // results: [{ label, time, score, url }], as returned by
@@ -575,12 +583,18 @@
         caption: `similarity ${result.score.toFixed(3)}`,
       });
       card.addEventListener('click', () => {
+        if (selectFramesMode) {
+          toggleFrameSelection(card);
+          return;
+        }
         if (result.time == null) return;
         committedTime = result.time;
         video.currentTime = result.time;
       });
       searchResults.appendChild(card);
     }
+
+    setResultActionsVisible(true);
   }
 
   function buildResultCard({ thumb, label, caption }) {
@@ -621,5 +635,50 @@
     p.className = 'results-placeholder';
     p.textContent = "Search results will appear here as frames linked to the video's markers.";
     searchResults.appendChild(p);
+    setResultActionsVisible(false);
   }
+
+  // ---------------------------------------------------------------------
+  // Select frames + Feedback buttons — both shown only while there are
+  // retrieved search results. Feedback stays disabled until at least one
+  // frame is selected. Its click handler is a placeholder for now.
+  // ---------------------------------------------------------------------
+
+  function setResultActionsVisible(visible) {
+    resultActions.hidden = !visible;
+    resetSelection();
+  }
+
+  function resetSelection() {
+    selectedFrames.clear();
+    selectFramesMode = false;
+    selectFramesBtn.classList.remove('active');
+    selectFramesBtn.textContent = 'Select frames';
+    updateFeedbackAvailability();
+  }
+
+  function toggleFrameSelection(card) {
+    if (selectedFrames.has(card)) {
+      selectedFrames.delete(card);
+      card.classList.remove('selected');
+    } else {
+      selectedFrames.add(card);
+      card.classList.add('selected');
+    }
+    updateFeedbackAvailability();
+  }
+
+  function updateFeedbackAvailability() {
+    feedbackBtn.disabled = selectedFrames.size === 0;
+  }
+
+  selectFramesBtn.addEventListener('click', () => {
+    selectFramesMode = !selectFramesMode;
+    selectFramesBtn.classList.toggle('active', selectFramesMode);
+    selectFramesBtn.textContent = selectFramesMode ? 'Selecting…' : 'Select frames';
+  });
+
+  feedbackBtn.addEventListener('click', () => {
+    // TODO: implement feedback flow
+  });
 })();

@@ -467,6 +467,15 @@ html, body{
   transform: translateY(-1px);
 }
 
+.result-card.selected{
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger);
+}
+
+.result-card.selected:hover{
+  border-color: var(--danger);
+}
+
 .result-card img{
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -491,4 +500,57 @@ html, body{
   font-size: 11px;
   color: var(--text-dim);
   margin-top: 2px;
+}
+
+/* ---------- feedback / select frames ---------- */
+
+.result-actions{
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 20;
+  display: flex;
+  gap: 10px;
+}
+
+.result-actions[hidden]{
+  display: none;
+}
+
+.feedback-btn,
+.select-frames-btn{
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  font-family: inherit;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: background .15s ease, transform .1s ease;
+}
+
+.feedback-btn:hover:not(:disabled),
+.select-frames-btn:hover{
+  background: #3d78e6;
+  transform: translateY(-1px);
+}
+
+.feedback-btn:disabled{
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.select-frames-btn.active{
+  background: var(--pin);
+}
+
+.select-frames-btn.active:hover{
+  background: var(--pin-hover);
 }
