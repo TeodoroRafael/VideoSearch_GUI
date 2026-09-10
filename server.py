@@ -27,6 +27,17 @@ folder and exposes:
                                      *_shot_boundaries_datamodel.json,
                                      errors if missing, otherwise extracts
                                      the frames and then builds the index.
+  GET    /api/pins?video_name=<name>
+                                - reads (creating if missing)
+                                  database/<video name>/<video name>_pins.json,
+                                  the pins "memory" file, and returns
+                                  { pins: [{ id, frame_number, time, label,
+                                  time_seconds }] }.
+  POST   /api/pins             - given {video_name, id, time, label}, adds
+                                  (or updates, if id already exists) a pin
+                                  in that video's memory file.
+  DELETE /api/pins?video_name=<name>&id=<id>
+                                - removes that pin from the memory file.
 
 Run:
     python3 server.py
@@ -58,8 +69,10 @@ from models.frame_extractor import (
     extract_frames_from_video,
     find_shot_boundaries_json,
     frames_dir_for_video,
+    get_video_fps,
     has_extracted_frames,
 )
+from models.pins import build_pin_record, delete_pin, load_pins, pin_time_seconds, upsert_pin
 from models.search import search_frames
 from models.write_faiss_index import build_index_for_frames, has_faiss_index
 
@@ -95,6 +108,13 @@ def find_existing_video(video_dir: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def find_video_by_name(raw_video_name: str) -> tuple[str, Path | None]:
+    video_name = sanitize_name(raw_video_name)
+    video_dir = DATABASE_DIR / video_name
+    video_path = find_existing_video(video_dir) if video_dir.is_dir() else None
+    return video_name, video_path
+
+
 RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
 
 
@@ -103,6 +123,8 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/search":
             self.handle_search(parsed)
+        elif parsed.path == "/api/pins":
+            self.handle_get_pins(parsed)
         elif self.headers.get("Range") and self.handle_range_request():
             pass
         else:
@@ -166,6 +188,15 @@ class Handler(SimpleHTTPRequestHandler):
             self.handle_upload_video()
         elif parsed.path == "/api/extract-frames":
             self.handle_extract_frames()
+        elif parsed.path == "/api/pins":
+            self.handle_upsert_pin()
+        else:
+            self.send_error(404)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/pins":
+            self.handle_delete_pin(parsed)
         else:
             self.send_error(404)
 
@@ -259,6 +290,61 @@ class Handler(SimpleHTTPRequestHandler):
         rel_index = "/" + str(Path(index_path).relative_to(STATIC_DIR)).replace("\\", "/")
         self.respond_json({"output_dir": rel_output, "faiss_path": rel_index})
 
+    def handle_get_pins(self, parsed):
+        params = parse_qs(parsed.query)
+        video_name, video_path = find_video_by_name(params.get("video_name", [""])[0])
+        if not video_path:
+            self.respond_json({"pins": []})
+            return
+
+        pins = load_pins(str(video_path), video_name)
+        fps = get_video_fps(str(video_path))
+        payload = [
+            {**pin, "time_seconds": pin_time_seconds(pin, fps)}
+            for pin in pins
+        ]
+        self.respond_json({"pins": payload})
+
+    def handle_upsert_pin(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else b""
+        try:
+            payload = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            payload = {}
+
+        video_name, video_path = find_video_by_name(payload.get("video_name", ""))
+        if not video_path:
+            self.respond_json({"error": "No video loaded for this name."}, status=404)
+            return
+
+        try:
+            pin_id = int(payload["id"])
+            time_seconds = float(payload["time"])
+        except (KeyError, TypeError, ValueError):
+            self.respond_json({"error": "Expected numeric 'id' and 'time'."}, status=400)
+            return
+        label = str(payload.get("label") or f"Marker {pin_id}")
+
+        pin = build_pin_record(str(video_path), pin_id, time_seconds, label)
+        pins = upsert_pin(str(video_path), video_name, pin)
+        self.respond_json({"pin": pin, "pins": pins})
+
+    def handle_delete_pin(self, parsed):
+        params = parse_qs(parsed.query)
+        video_name, video_path = find_video_by_name(params.get("video_name", [""])[0])
+        try:
+            pin_id = int(params.get("id", [""])[0])
+        except ValueError:
+            self.respond_json({"error": "Expected numeric 'id'."}, status=400)
+            return
+        if not video_path:
+            self.respond_json({"error": "No video loaded for this name."}, status=404)
+            return
+
+        pins = delete_pin(str(video_path), video_name, pin_id)
+        self.respond_json({"pins": pins})
+
     def save_body_to_file(self, target: Path, length: int):
         with open(target, "wb") as f:
             remaining = length
@@ -279,7 +365,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         # keep the console readable during the POC
-        if urlparse(self.path).path in ("/api/search", "/api/videos", "/api/extract-frames"):
+        if urlparse(self.path).path in ("/api/search", "/api/videos", "/api/extract-frames", "/api/pins"):
             super().log_message(format, *args)
 
     def handle_one_request(self):

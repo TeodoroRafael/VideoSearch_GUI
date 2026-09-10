@@ -92,9 +92,8 @@
     emptyState.hidden = true;
     setControlsEnabled(true);
 
-    pins = [];
-    renderPins();
     resetSearchResults();
+    await loadPinsMemory();
 
     committedTime = 0;
     playBtn.textContent = '▶';
@@ -119,6 +118,9 @@
   video.addEventListener('loadedmetadata', () => {
     durationEl.textContent = formatTime(video.duration);
     updateProgressUI();
+    // Pins may have finished loading (from the memory file) before duration
+    // was known, in which case renderPins() was a no-op until now.
+    renderPins();
   });
 
   video.addEventListener('timeupdate', () => {
@@ -330,6 +332,8 @@
     pins.push(pin);
     pins.sort((a, b) => a.time - b.time);
     renderPins();
+
+    savePinToMemory(pin);
   });
 
   function renderPins() {
@@ -355,6 +359,7 @@
         if (newLabel && newLabel.trim()) {
           pin.label = newLabel.trim();
           renderPins();
+          savePinToMemory(pin);
         }
       });
 
@@ -363,9 +368,74 @@
         e.stopPropagation();
         pins = pins.filter((p) => p.id !== pin.id);
         renderPins();
+        deletePinFromMemory(pin.id);
       });
 
       pinsLayer.appendChild(el);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Pins memory — database/<video name>/<video name>_pins.json (server.py
+  // -> models/pins.py). Loaded when a video opens, kept in sync on every
+  // create / rename / delete so markers survive across sessions.
+  // ---------------------------------------------------------------------
+
+  async function loadPinsMemory() {
+    pins = [];
+    pinIdCounter = 1;
+
+    try {
+      const res = await fetch(`/api/pins?video_name=${encodeURIComponent(currentVideoName)}`);
+      const data = await res.json();
+      const stored = data.pins || [];
+
+      // captureVideo.src was just set (in the caller) — wait for it to be
+      // seekable before capturing thumbnails, or restored pins would come
+      // back blank.
+      await waitForCaptureVideoReady();
+
+      pins = await Promise.all(stored.map(async (p) => ({
+        id: p.id,
+        time: p.time_seconds,
+        label: p.label,
+        thumb: await captureThumbnail(p.time_seconds),
+      })));
+      pins.sort((a, b) => a.time - b.time);
+      pinIdCounter = pins.reduce((max, p) => Math.max(max, p.id), 0) + 1;
+    } catch (err) {
+      // server.py isn't running / not reachable — start with no pins restored
+    }
+
+    renderPins();
+  }
+
+  async function savePinToMemory(pin) {
+    if (!currentVideoName) return;
+    try {
+      await fetch('/api/pins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_name: currentVideoName,
+          id: pin.id,
+          time: pin.time,
+          label: pin.label,
+        }),
+      });
+    } catch (err) {
+      // server.py isn't running / not reachable — pin stays local-only for this session
+    }
+  }
+
+  async function deletePinFromMemory(pinId) {
+    if (!currentVideoName) return;
+    try {
+      await fetch(`/api/pins?video_name=${encodeURIComponent(currentVideoName)}&id=${pinId}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      // server.py isn't running / not reachable — deletion stays local-only for this session
     }
   }
 
@@ -403,6 +473,17 @@
 
       cv.addEventListener('seeked', finish);
       cv.currentTime = time;
+    });
+  }
+
+  // Resolves once captureVideo has loaded enough to be seekable.
+  function waitForCaptureVideoReady() {
+    return new Promise((resolve) => {
+      if (captureVideo.readyState >= 1) { // HAVE_METADATA
+        resolve();
+        return;
+      }
+      captureVideo.addEventListener('loadedmetadata', () => resolve(), { once: true });
     });
   }
 
