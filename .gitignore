@@ -1,3 +1,5 @@
 .DS_Store
 RTL Data/
 database/
+__pycache__/
+*.pyc
