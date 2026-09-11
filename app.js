@@ -40,6 +40,10 @@
   const resultActions        = document.getElementById('resultActions');
   const selectFramesBtn        = document.getElementById('selectFramesBtn');
   const feedbackBtn         = document.getElementById('feedbackBtn');
+  const explainBtn          = document.getElementById('explainBtn');
+  const explainModal         = document.getElementById('explainModal');
+  const explainModalClose      = document.getElementById('explainModalClose');
+  const explainModalBody        = document.getElementById('explainModalBody');
 
   const DEFAULT_K = 5;
 
@@ -58,6 +62,9 @@
   let lastSearchK = null;      // k used for that last search
   let lastFeedback = null;     // { positiveLabels, negativeLabels } from the last applied
                                 // feedback round, or null if none is active for this query
+  let explainCache = null;     // { negative } captioned once per feedback round by
+                                // /api/explain — reused on repeat Explain clicks so LLaVA
+                                // doesn't re-run until the next Feedback round
   let searchLocked = false;    // true once a search has been submitted — the search box then
                                 // shows that query read-only until "New search" resets it
 
@@ -575,6 +582,8 @@
     lastSearchQuery = query;
     lastSearchK = Number(kSlider.value);
     lastFeedback = null; // a fresh text search drops any prior feedback context
+    explainCache = null;
+    updateExplainAvailability();
     lockSearchBox(query);
     renderFrameResults(data.results || [], query);
   }
@@ -666,6 +675,8 @@
     lastSearchQuery = null;
     lastSearchK = null;
     lastFeedback = null;
+    explainCache = null;
+    updateExplainAvailability();
     kSlider.value = DEFAULT_K;
     kValueEl.textContent = DEFAULT_K;
     searchResults.innerHTML = '';
@@ -713,6 +724,14 @@
 
   function updateFeedbackAvailability() {
     feedbackBtn.disabled = selectedFrames.size === 0;
+  }
+
+  // Explain only makes sense once feedback has actually reshaped the current
+  // search's results, so it stays disabled until lastFeedback is set (by a
+  // successful Feedback round) and gets disabled again by anything that
+  // clears lastFeedback (a fresh text search, or resetting the results).
+  function updateExplainAvailability() {
+    explainBtn.disabled = !lastFeedback;
   }
 
   selectFramesBtn.addEventListener('click', () => {
@@ -776,10 +795,121 @@
 
       lastSearchK = k;
       lastFeedback = { positiveLabels, negativeLabels };
+      explainCache = null; // this feedback round is new -- any cached captions are stale
+      updateExplainAvailability();
       processing.finish('Search updated.');
       renderFrameResults(data.results || [], lastSearchQuery); // also resets selection
     } catch (err) {
       processing.finish('Could not reach the Python backend.', 3000);
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Explain modal — a gallery of the frames selected as feedback (the
+  // ones ruled out via "Select frames"), each captioned (POST /api/explain
+  // -> server.py -> models/search.py's explain_negative_feedback, the same
+  // CaptionVLMRelevanceFeedback pipeline as
+  // checkpoints/relevance_feedback_checkpoint.py).
+  // ---------------------------------------------------------------------
+
+  explainBtn.addEventListener('click', () => {
+    openExplainModal();
+  });
+
+  explainModalClose.addEventListener('click', closeExplainModal);
+
+  explainModal.addEventListener('click', (e) => {
+    if (e.target === explainModal) closeExplainModal(); // click on the overlay, not the panel
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !explainModal.hidden) closeExplainModal();
+  });
+
+  async function openExplainModal() {
+    if (!currentVideoName || !lastSearchQuery || !lastFeedback) return;
+
+    // Already captioned this feedback round -- reopen instantly from
+    // memory instead of re-running LLaVA for the same images.
+    if (explainCache) {
+      renderExplainGallery(explainCache.negative);
+      explainModal.hidden = false;
+      return;
+    }
+
+    explainModalBody.innerHTML = '';
+    const loading = document.createElement('p');
+    loading.className = 'modal-placeholder';
+    loading.textContent = 'Generating captions...';
+    explainModalBody.appendChild(loading);
+    explainModal.hidden = false;
+
+    let data;
+    try {
+      const res = await fetch('/api/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_name: currentVideoName,
+          query: lastSearchQuery,
+          negative_labels: lastFeedback.negativeLabels,
+        }),
+      });
+      data = await res.json();
+
+      if (!res.ok || data.error) {
+        renderExplainMessage(data.error || 'Explain failed.');
+        return;
+      }
+    } catch (err) {
+      renderExplainMessage('Could not reach the Python backend.');
+      return;
+    }
+
+    explainCache = { negative: data.negative || [] };
+    renderExplainGallery(explainCache.negative);
+  }
+
+  function renderExplainMessage(message) {
+    explainModalBody.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'modal-placeholder';
+    p.textContent = message;
+    explainModalBody.appendChild(p);
+  }
+
+  function renderExplainGallery(negative) {
+    explainModalBody.innerHTML = '';
+
+    if (!negative.length) {
+      renderExplainMessage('No negative feedback to explain.');
+      return;
+    }
+
+    const gallery = document.createElement('div');
+    gallery.className = 'explain-gallery';
+
+    for (const item of negative) {
+      const card = document.createElement('div');
+      card.className = 'explain-card';
+
+      const img = document.createElement('img');
+      img.src = item.url;
+      img.alt = item.label;
+
+      const caption = document.createElement('div');
+      caption.className = 'explain-caption';
+      caption.textContent = item.caption;
+
+      card.appendChild(img);
+      card.appendChild(caption);
+      gallery.appendChild(card);
+    }
+
+    explainModalBody.appendChild(gallery);
+  }
+
+  function closeExplainModal() {
+    explainModal.hidden = true;
   }
 })();

@@ -9,6 +9,14 @@ from PIL import Image, ImageDraw
 from models.vlm_wrapper import VLMWrapperCaptioning, VLMWrapperRetrieval
 
 
+def whole_image_box(img_size: int, label: str) -> List[Dict[str, Any]]:
+    """A single annotation box covering the whole image, in the shape
+    CaptionVLMRelevanceFeedback expects from the GUI's box-annotator --
+    for callers that want to caption/feedback on a whole image rather than
+    an annotated fragment."""
+    return [{"xmin": 0, "ymin": 0, "xmax": img_size, "ymax": img_size, "label": label}]
+
+
 class RocchioUpdate:
     def __init__(self, alpha: float = 0.8, beta: float = 0.1, gamma: float = 0.1):
         self.alpha = alpha

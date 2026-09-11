@@ -518,7 +518,8 @@ html, body{
 }
 
 .feedback-btn,
-.select-frames-btn{
+.select-frames-btn,
+.explain-btn{
   display: inline-flex;
   align-items: center;
   height: 40px;
@@ -536,12 +537,14 @@ html, body{
 }
 
 .feedback-btn:hover:not(:disabled),
-.select-frames-btn:hover{
+.select-frames-btn:hover,
+.explain-btn:hover:not(:disabled){
   background: #3d78e6;
   transform: translateY(-1px);
 }
 
-.feedback-btn:disabled{
+.feedback-btn:disabled,
+.explain-btn:disabled{
   opacity: 0.4;
   cursor: not-allowed;
   transform: none;
@@ -553,4 +556,100 @@ html, body{
 
 .select-frames-btn.active:hover{
   background: var(--pin-hover);
+}
+
+/* ---------- explain modal ---------- */
+
+.modal-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 24px;
+}
+
+.modal-overlay[hidden]{
+  display: none;
+}
+
+.modal{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 780px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-header h2{
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.modal-close{
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+}
+
+.modal-close:hover{
+  color: var(--text);
+}
+
+.modal-body{
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.modal-placeholder{
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.explain-gallery{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.explain-card{
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.explain-card img{
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  background: #000;
+}
+
+.explain-card .explain-caption{
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
 }

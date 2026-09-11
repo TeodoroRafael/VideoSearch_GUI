@@ -18,7 +18,12 @@ faiss.omp_set_num_threads(1)
 
 from models.configs import load_vlm_wrapper
 from models.frame_extractor import frames_dir_for_video, get_video_fps
-from models.relevance_feedback import ImageEmbeddingRelevanceFeedback, RocchioUpdate
+from models.relevance_feedback import (
+    CaptionVLMRelevanceFeedback,
+    ImageEmbeddingRelevanceFeedback,
+    RocchioUpdate,
+    whole_image_box,
+)
 from models.write_faiss_index import faiss_index_path
 
 FRAME_IDX_RE = re.compile(r"(\d+)")
@@ -27,6 +32,8 @@ FRAME_IDX_RE = re.compile(r"(\d+)")
 def get_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
     return "cpu"
 
 
@@ -186,3 +193,69 @@ def feedback_search_frames(
     faiss.normalize_L2(query_vector)
 
     return _search_index(video_path, video_name, query_vector, k)
+
+
+# Same lightweight LLaVA variant checkpoints/relevance_feedback_checkpoint.py
+# uses, so the "Explain" gallery stays responsive instead of pulling in the
+# default 7B captioning model just to describe a handful of images.
+EXPLAIN_CAPTIONING_MODEL_ID = "llava-hf/llava-interleave-qwen-0.5b-hf"
+EXPLAIN_CAPTION_PROMPT = "Describe the visual content of the image in fewer than 25 words."
+EXPLAIN_CAPTION_MAX_WORDS = 25
+
+
+def _truncate_words(text: str, max_words: int) -> str:
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words]) + "..."
+
+
+def explain_negative_feedback(
+    video_path: str,
+    query: str,
+    negative_labels: List[str],
+    model_family: str = "clip",
+    model_id: Optional[str] = None,
+    captioning_model_family: str = "llava",
+    captioning_model_id: Optional[str] = EXPLAIN_CAPTIONING_MODEL_ID,
+    device: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """
+    Caption each of `negative_labels` (the frames the user selected as
+    feedback) for the "Explain" UI's image gallery -- same
+    CaptionVLMRelevanceFeedback pipeline as
+    checkpoints/relevance_feedback_checkpoint.py. Purely explanatory:
+    feedback_search_frames itself updates the query from raw image
+    embeddings, not these generated captions.
+
+    Captions are truncated to EXPLAIN_CAPTION_MAX_WORDS words: the prompt
+    already asks for "fewer than 25 words", but this small, fast captioning
+    model doesn't reliably honor that on its own.
+    """
+    if not negative_labels:
+        return []
+
+    if device is None:
+        device = get_device()
+
+    retrieval_wrapper = load_vlm_wrapper(model_family, model_id, device)
+    captioning_wrapper = load_vlm_wrapper(captioning_model_family, captioning_model_id, device)
+
+    feedback = CaptionVLMRelevanceFeedback(
+        vlm_wrapper_retrieval=retrieval_wrapper,
+        vlm_wrapper_captioning=captioning_wrapper,
+    )
+    negative_paths = [frame_path_for_label(video_path, label) for label in negative_labels]
+    result = feedback(
+        query=query,
+        relevant_image_paths=negative_paths,
+        annotator_json_boxes_list=[whole_image_box(feedback.img_size, "Irrelevant") for _ in negative_paths],
+        prompt=EXPLAIN_CAPTION_PROMPT,
+        top_k_feedback=len(negative_paths),
+    )
+
+    captions = result["irrelevant_captions"] or []
+    return [
+        {"label": label, "caption": _truncate_words(caption, EXPLAIN_CAPTION_MAX_WORDS)}
+        for label, caption in zip(negative_labels, captions)
+    ]

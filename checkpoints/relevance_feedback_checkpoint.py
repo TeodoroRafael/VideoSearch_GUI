@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.clip import CLIPWrapper
 from models.llava import LLaVaWrapper
-from models.relevance_feedback import CaptionVLMRelevanceFeedback, RocchioUpdate
+from models.relevance_feedback import CaptionVLMRelevanceFeedback, RocchioUpdate, whole_image_box
 
 # A small LLaVA variant (same LlavaForConditionalGeneration architecture the
 # wrapper expects) so the checkpoint doesn't have to pull down the default
@@ -50,12 +50,6 @@ def get_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
-
-
-def whole_image_box(img_size: int, label: str) -> List[Dict[str, Any]]:
-    """A single annotation box covering the whole image, matching the shape
-    the GUI's box-annotator produces for a fragment selection."""
-    return [{"xmin": 0, "ymin": 0, "xmax": img_size, "ymax": img_size, "label": label}]
 
 
 def label_tag(label: str) -> str:
