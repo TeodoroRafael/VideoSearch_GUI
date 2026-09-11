@@ -292,6 +292,41 @@ class CaptionVLMRelevanceFeedback(RelevanceFeedback):
         return images_with_captions
 
 
+class ImageEmbeddingRelevanceFeedback(RelevanceFeedback):
+    """
+    Relevance feedback computed directly from retrieval-space image
+    embeddings, with no captioning step: an average embedding of the
+    positive images and one of the negative images, ready to combine with
+    a query embedding via RocchioUpdate. Cheaper than CaptionVLMRelevanceFeedback
+    since it skips loading/running a captioning VLM, which matters for an
+    interactive "click Feedback, get updated results" flow.
+    """
+
+    def __init__(self, vlm_wrapper_retrieval: VLMWrapperRetrieval):
+        self.vlm_wrapper_retrieval = vlm_wrapper_retrieval
+
+    def __call__(
+        self,
+        query: str,
+        positive_image_paths: Optional[List[str]] = None,
+        negative_image_paths: Optional[List[str]] = None,
+    ) -> Dict[str, Optional[torch.Tensor]]:
+        return {
+            "positive": self._average_embedding(positive_image_paths),
+            "negative": self._average_embedding(negative_image_paths),
+        }
+
+    def _average_embedding(self, image_paths: Optional[List[str]]) -> Optional[torch.Tensor]:
+        if not image_paths:
+            return None
+        images = [Image.open(path).convert("RGB") for path in image_paths]
+        inputs = self.vlm_wrapper_retrieval.process_inputs(images=images)
+        with torch.no_grad():
+            embeddings = self.vlm_wrapper_retrieval.get_image_embeddings(inputs)
+        embeddings = F.normalize(embeddings, p=2, dim=-1)
+        return embeddings.mean(dim=0)
+
+
 class ImageBasedVLMRelevanceFeedback(RelevanceFeedback):
     def __init__(
         self,

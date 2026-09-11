@@ -13,6 +13,17 @@ folder and exposes:
                                   { query, results: [{ label, time, score, url }] }.
                                   Empty results carry a "message" when there's
                                   no video / no FAISS dataset built yet.
+  POST /api/feedback           - relevance feedback on a previous search's
+                                  result set. Given {video_name, query, k,
+                                  positive_labels, negative_labels} (labels
+                                  the "Select frames" UI ruled out go in
+                                  negative_labels, the rest of that result
+                                  set in positive_labels), folds their average
+                                  image embeddings into the query via
+                                  Rocchio's algorithm (models/search.py's
+                                  feedback_search_frames) and re-searches the
+                                  FAISS index with the updated query. Same
+                                  response shape as GET /api/search.
   POST /api/videos             - receives an opened video, stores it under
                                   database/<video name>/ and reports back
                                   the path to use as the reference copy.
@@ -74,7 +85,7 @@ from models.frame_extractor import (
     has_extracted_frames,
 )
 from models.pins import build_pin_record, delete_pin, load_pins, pin_time_seconds, upsert_pin
-from models.search import search_frames
+from models.search import feedback_search_frames, search_frames
 from models.write_faiss_index import build_index_for_frames, has_faiss_index
 
 PORT = 8000
@@ -193,6 +204,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.handle_extract_frames()
         elif parsed.path == "/api/pins":
             self.handle_upsert_pin()
+        elif parsed.path == "/api/feedback":
+            self.handle_feedback()
         else:
             self.send_error(404)
 
@@ -225,7 +238,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         matches = search_frames(str(video_path), video_name, query, k=k)
-        results = [
+        self.respond_json({"query": query, "results": self.matches_to_results(matches)})
+
+    def matches_to_results(self, matches):
+        return [
             {
                 "label": match["label"],
                 "time": match["time"],
@@ -234,7 +250,48 @@ class Handler(SimpleHTTPRequestHandler):
             }
             for match in matches
         ]
-        self.respond_json({"query": query, "results": results})
+
+    def handle_feedback(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else b""
+        try:
+            payload = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            payload = {}
+
+        query = str(payload.get("query", "")).strip()
+        video_name = sanitize_name(payload.get("video_name", ""))
+        positive_labels = payload.get("positive_labels") or []
+        negative_labels = payload.get("negative_labels") or []
+
+        try:
+            k = int(payload.get("k"))
+        except (TypeError, ValueError):
+            k = DEFAULT_SEARCH_RESULT_COUNT
+        k = max(MIN_SEARCH_RESULT_COUNT, min(k, MAX_SEARCH_RESULT_COUNT))
+
+        if not query:
+            self.respond_json({"error": "Missing query."}, status=400)
+            return
+        if not negative_labels:
+            self.respond_json({"error": "Select at least one frame to give feedback on."}, status=400)
+            return
+
+        video_dir = DATABASE_DIR / video_name
+        video_path = find_existing_video(video_dir) if video_dir.is_dir() else None
+        if not video_path or not has_faiss_index(str(video_path), video_name):
+            self.respond_json({"query": query, "results": [], "message": NO_DATASET_MESSAGE})
+            return
+
+        matches = feedback_search_frames(
+            str(video_path),
+            video_name,
+            query,
+            positive_labels=positive_labels,
+            negative_labels=negative_labels,
+            k=k,
+        )
+        self.respond_json({"query": query, "results": self.matches_to_results(matches)})
 
     def handle_upload_video(self):
         raw_filename = unquote(self.headers.get("X-Filename", "video"))
@@ -374,7 +431,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         # keep the console readable during the POC
-        if urlparse(self.path).path in ("/api/search", "/api/videos", "/api/extract-frames", "/api/pins"):
+        if urlparse(self.path).path in ("/api/search", "/api/videos", "/api/extract-frames", "/api/pins", "/api/feedback"):
             super().log_message(format, *args)
 
     def handle_one_request(self):

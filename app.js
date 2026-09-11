@@ -582,6 +582,7 @@
         label: result.time != null ? formatTime(result.time) : result.label,
         caption: `similarity ${result.score.toFixed(3)}`,
       });
+      card.dataset.frameLabel = result.label;
       card.addEventListener('click', () => {
         if (selectFramesMode) {
           toggleFrameSelection(card);
@@ -641,7 +642,12 @@
   // ---------------------------------------------------------------------
   // Select frames + Feedback buttons — both shown only while there are
   // retrieved search results. Feedback stays disabled until at least one
-  // frame is selected. Its click handler is a placeholder for now.
+  // frame is selected. Selected frames are the ones the user is ruling
+  // out (negative signal); the rest of that same result set — left
+  // unselected — stands in as the positive signal. POST /api/feedback
+  // (server.py -> models/search.py's feedback_search_frames) folds their
+  // average image embeddings into the query via Rocchio's algorithm and
+  // re-searches the FAISS index with the updated query.
   // ---------------------------------------------------------------------
 
   function setResultActionsVisible(visible) {
@@ -679,6 +685,51 @@
   });
 
   feedbackBtn.addEventListener('click', () => {
-    // TODO: implement feedback flow
+    runFeedback();
   });
+
+  async function runFeedback() {
+    if (!currentVideoName || !lastSearchQuery || selectedFrames.size === 0) return;
+
+    const allCards = Array.from(searchResults.querySelectorAll('.result-card'));
+    const negativeLabels = []; // selected -> ruled out
+    const positiveLabels = []; // unselected -> what the user wanted
+    for (const card of allCards) {
+      (selectedFrames.has(card) ? negativeLabels : positiveLabels).push(card.dataset.frameLabel);
+    }
+
+    feedbackBtn.disabled = true;
+    const processing = showProcessingToast('Updating search with feedback');
+
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_name: currentVideoName,
+          query: lastSearchQuery,
+          k: lastSearchK,
+          positive_labels: positiveLabels,
+          negative_labels: negativeLabels,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        processing.finish(data.error || 'Feedback failed.', 3000);
+        return;
+      }
+      if (data.message) {
+        processing.finish(data.message, 3000);
+        return;
+      }
+
+      processing.finish('Search updated.');
+      renderFrameResults(data.results || [], lastSearchQuery); // also resets selection
+    } catch (err) {
+      processing.finish('Could not reach the Python backend.', 3000);
+    } finally {
+      updateFeedbackAvailability();
+    }
+  }
 })();
