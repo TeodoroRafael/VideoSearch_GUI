@@ -98,6 +98,14 @@
     <text x="570" y="710" fill="#9aa0ac" font-size="10" font-family="Menlo, monospace">04:41</text>
   </g>
 
+  <!-- floating result actions: Select frames / Feedback / Explain -->
+  <rect x="860" y="740" width="130" height="40" rx="20" fill="#4f8cff" />
+  <text x="925" y="765" fill="#ffffff" font-size="13" font-weight="500" text-anchor="middle">Select frames</text>
+  <rect x="1000" y="740" width="90" height="40" rx="20" fill="#4f8cff" />
+  <text x="1045" y="765" fill="#ffffff" font-size="13" font-weight="500" text-anchor="middle">Feedback</text>
+  <rect x="1100" y="740" width="80" height="40" rx="20" fill="#4f8cff" />
+  <text x="1140" y="765" fill="#ffffff" font-size="13" font-weight="500" text-anchor="middle">Explain</text>
+
   <!-- callout badges -->
   <g font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">
     <circle cx="960" cy="12" r="13" fill="#ff9f43" /><text x="960" y="17">1</text>
@@ -113,5 +121,6 @@
     <circle cx="30" cy="586" r="13" fill="#ff9f43" /><text x="30" y="591">11</text>
     <circle cx="1070" cy="12" r="13" fill="#ff9f43" /><text x="1070" y="17">12</text>
     <circle cx="945" cy="532" r="13" fill="#ff9f43" /><text x="945" y="537">13</text>
+    <circle cx="870" cy="750" r="13" fill="#ff9f43" /><text x="870" y="755">14</text>
   </g>
 </svg>
