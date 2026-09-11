@@ -56,6 +56,10 @@
   let currentVideoName = null; // database/<currentVideoName>/ for the loaded video
   let lastSearchQuery = null;  // last non-empty query actually sent to the backend
   let lastSearchK = null;      // k used for that last search
+  let lastFeedback = null;     // { positiveLabels, negativeLabels } from the last applied
+                                // feedback round, or null if none is active for this query
+  let searchLocked = false;    // true once a search has been submitted — the search box then
+                                // shows that query read-only until "New search" resets it
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -509,6 +513,16 @@
 
   searchForm.addEventListener('submit', (e) => {
     e.preventDefault();
+
+    // Locked (a search is already showing) -> the submit button is now
+    // "New search": clear it back to an editable, empty box instead of
+    // searching again.
+    if (searchLocked) {
+      resetSearchResults();
+      searchInput.focus();
+      return;
+    }
+
     const query = searchInput.value.trim();
     if (!query) return; // nothing written -> don't search
     performSearch(query);
@@ -517,12 +531,19 @@
   // k (number of results to retrieve) — update the live label while
   // dragging, but only rerun the last search once the user lets go
   // ('change', not 'input') and only if k actually moved since that search.
+  // If a feedback round is active for the current query, re-run *that*
+  // (same positive/negative labels, new k) instead of the plain text
+  // search, so resizing the result set doesn't throw away the feedback.
   kSlider.addEventListener('input', () => {
     kValueEl.textContent = kSlider.value;
   });
 
   kSlider.addEventListener('change', () => {
-    if (lastSearchQuery && Number(kSlider.value) !== lastSearchK) {
+    if (!lastSearchQuery || Number(kSlider.value) === lastSearchK) return;
+
+    if (lastFeedback) {
+      performFeedbackSearch(lastFeedback.positiveLabels, lastFeedback.negativeLabels, Number(kSlider.value));
+    } else {
       performSearch(lastSearchQuery);
     }
   });
@@ -553,7 +574,19 @@
 
     lastSearchQuery = query;
     lastSearchK = Number(kSlider.value);
+    lastFeedback = null; // a fresh text search drops any prior feedback context
+    lockSearchBox(query);
     renderFrameResults(data.results || [], query);
+  }
+
+  // Shows the submitted query read-only and turns the submit button into
+  // "New search" — a real search happened, so editing the box in place no
+  // longer does anything until it's reset.
+  function lockSearchBox(query) {
+    searchLocked = true;
+    searchInput.value = query;
+    searchInput.disabled = true;
+    searchBtn.textContent = 'New search';
   }
 
   function renderSearchMessage(message) {
@@ -626,9 +659,13 @@
   }
 
   function resetSearchResults() {
+    searchLocked = false;
     searchInput.value = '';
+    searchInput.disabled = false;
+    searchBtn.textContent = '🔍 Search';
     lastSearchQuery = null;
     lastSearchK = null;
+    lastFeedback = null;
     kSlider.value = DEFAULT_K;
     kValueEl.textContent = DEFAULT_K;
     searchResults.innerHTML = '';
@@ -699,6 +736,19 @@
     }
 
     feedbackBtn.disabled = true;
+    try {
+      await performFeedbackSearch(positiveLabels, negativeLabels, lastSearchK);
+    } finally {
+      updateFeedbackAvailability();
+    }
+  }
+
+  // Runs (or re-runs) relevance feedback with a given positive/negative
+  // label split and k, and remembers that split as lastFeedback so the k
+  // slider can later resize the result set without losing the feedback.
+  async function performFeedbackSearch(positiveLabels, negativeLabels, k) {
+    if (!currentVideoName || !lastSearchQuery) return;
+
     const processing = showProcessingToast('Updating search with feedback');
 
     try {
@@ -708,7 +758,7 @@
         body: JSON.stringify({
           video_name: currentVideoName,
           query: lastSearchQuery,
-          k: lastSearchK,
+          k,
           positive_labels: positiveLabels,
           negative_labels: negativeLabels,
         }),
@@ -724,12 +774,12 @@
         return;
       }
 
+      lastSearchK = k;
+      lastFeedback = { positiveLabels, negativeLabels };
       processing.finish('Search updated.');
       renderFrameResults(data.results || [], lastSearchQuery); // also resets selection
     } catch (err) {
       processing.finish('Could not reach the Python backend.', 3000);
-    } finally {
-      updateFeedbackAvailability();
     }
   }
 })();
